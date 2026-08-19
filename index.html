@@ -28,6 +28,15 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.4.0 — added a History tab: log what was actually eaten per calendar date
+           (lunch + tea, free text), with a "prefill from that day's plan" shortcut
+           and a reverse-chronological list of past logged days, tap to edit.
+           NOTE: push notification (6pm daily reminder to fill this in) was
+           requested but needs a proper backend — Firebase Cloud Messaging +
+           a scheduled Cloud Function — which isn't wired up yet. See OPEN
+           THREADS below; this is the next thing to build.
+  v1.3.0 — Meal Bank now has a "When" filter (all/lunch/tea) alongside protein and
+           speed, so lunch and tea meals can be browsed separately.
   v1.2.1 — moved the version number out of the tiny footer into a visible badge
            next to the page title, so it's obvious at a glance without scrolling.
   v1.2.0 — added a Meal Bank browse tab (separate from the weekly rota view):
@@ -52,9 +61,22 @@
     maintain (tags), the grid/UI around it is cheap to redo.
 
   OPEN THREADS / TODO
+  - PUSH NOTIFICATION (in progress): Ben wants a daily 6pm reminder to log what
+    was actually eaten (History tab). Chose the "real push notification" route
+    over a simple in-app reminder. This needs: (1) a Firebase project with Cloud
+    Messaging enabled, (2) a service worker registered client-side to receive
+    background push and request notification permission + FCM token, (3) that
+    token stored somewhere the scheduler can read it, (4) a Cloud Function on a
+    daily Cloud Scheduler trigger (18:00, Europe/London) that sends the push via
+    FCM. Steps 2/3 are client code Claude can write directly into index.html;
+    steps 1 and 4 need Ben to create the Firebase project and deploy the Cloud
+    Function himself (same credential limitation as GitHub push) — Claude can
+    write the Cloud Function code for him to deploy via Firebase CLI. Not started.
   - Weeks C and D are still mostly empty (only the Saturday roast/lasagne
     alternation is set).
-  - No cross-device sync yet (Firebase, like the other household apps have).
+  - No cross-device sync yet (Firebase, like the other household apps have) —
+    could potentially be combined with the Firebase project set up for push
+    notifications above, worth doing together rather than twice.
   - Lunch slots are almost entirely unplanned — only Tea has been worked
     through in detail so far.
 
@@ -73,7 +95,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.2.1</title>
+<title>Meal Rota v1.4.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -292,6 +314,43 @@
   }
   .bank-empty{color:var(--muted); font-size:13px; padding:20px 8px; text-align:center;}
 
+  /* ── History tab ── */
+  .history-log-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:14px; margin:14px 4px 18px;
+  }
+  .history-log-title{font-family:'Fraunces',serif; font-weight:600; font-size:15px; margin-bottom:10px;}
+  .history-date-row{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .history-date-input{
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--paper); font-family:'IBM Plex Mono',monospace; font-size:12.5px; padding:7px 9px; flex:1;
+  }
+  .history-field-label{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:8px 0 4px;}
+  .history-text-input{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--paper); font-family:'Inter',sans-serif; font-size:13.5px; padding:9px 10px;
+  }
+  .history-prefill-btn{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--mustard);
+    background:none; border:1px dashed var(--mustard-dim); border-radius:8px;
+    padding:5px 9px; cursor:pointer; margin-top:6px;
+  }
+  .history-save-btn{
+    width:100%; margin-top:12px; background:var(--mustard); color:#1c1509; border:none;
+    border-radius:9px; padding:10px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+  .history-entry{
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:11px 13px; margin:0 4px 8px;
+  }
+  .history-entry-date{font-family:'Fraunces',serif; font-weight:600; font-size:14px; margin-bottom:4px;}
+  .history-entry-row{font-size:13px; color:var(--paper-dim); margin-top:2px;}
+  .history-entry-row b{color:var(--paper); font-weight:600;}
+  .history-entry-edit{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted);
+    background:none; border:none; cursor:pointer; float:right;
+  }
+
 </style>
 </head>
 <body>
@@ -316,11 +375,13 @@
   <div class="view-switch" id="viewSwitch">
     <button class="view-btn active" data-view="rota">This week</button>
     <button class="view-btn" data-view="bank">Meal bank</button>
+    <button class="view-btn" data-view="history">History</button>
   </div>
 </header>
 
 <main id="mainGrid"></main>
 <main id="bankView" style="display:none;"></main>
+<main id="historyView" style="display:none;"></main>
 
 <p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only</p>
 
@@ -338,7 +399,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.4.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -501,6 +562,19 @@ let template = loadTemplate();
 let activeWeek = WEEK_KEYS[currentWeekIndex()];
 let sheetTarget = null; // {week, day, slot: 'lunch'|'tea', who: 'family'|'adults'}
 let sheetFilter = null; // active tag chip
+
+function weekAndDayForDate(dateStr){
+  // dateStr: 'YYYY-MM-DD'. Returns {weekKey, dayKey}.
+  const anchor = getAnchorMonday();
+  const d = new Date(dateStr+"T00:00:00");
+  const day = d.getDay();
+  const diff = (day===0? -6 : 1-day);
+  const thatMonday = new Date(d); thatMonday.setDate(d.getDate()+diff);
+  const weeksSince = Math.round((thatMonday - anchor) / (7*24*3600*1000));
+  const idx = ((weeksSince % 4) + 4) % 4;
+  const dayKey = DAYS[(day===0?6:day-1)].key;
+  return {weekKey: WEEK_KEYS[idx], dayKey};
+}
 
 /* ───────────────────────── Render: header dial + tabs ───────────────────────── */
 function renderHeader(){
@@ -692,6 +766,7 @@ const PROTEIN_COLOR = {chicken:"var(--c-chicken)", beef:"var(--c-beef)", pork:"v
 
 let bankProtein = null;   // one of PROTEIN_TAGS or null
 let bankSpeed = null;     // one of SPEED_TAGS or null
+let bankWhen = null;      // "lunch" | "tea" | null
 let bankSort = "name";    // "name" | "protein" | "speed"
 let bankExpanded = new Set(); // meal names with tags currently shown
 
@@ -705,6 +780,21 @@ function pillColor(m){
 function renderBankControls(){
   const wrap = document.getElementById('bankControls');
   wrap.innerHTML = '';
+
+  const whenGroup = document.createElement('div');
+  whenGroup.className = 'bank-filter-group';
+  whenGroup.innerHTML = `<div class="bank-filter-label">When</div>`;
+  const whenRow = document.createElement('div');
+  whenRow.className = 'bank-chip-row';
+  [{key:null,label:'all'}, {key:'lunch',label:'lunch'}, {key:'tea',label:'tea'}].forEach(opt=>{
+    const chip = document.createElement('div');
+    chip.className = 'bank-chip' + (bankWhen===opt.key ? ' active':'');
+    chip.textContent = opt.label;
+    chip.onclick = ()=>{ bankWhen = opt.key; renderBankControls(); renderBankList(); };
+    whenRow.appendChild(chip);
+  });
+  whenGroup.appendChild(whenRow);
+  wrap.appendChild(whenGroup);
 
   const proteinGroup = document.createElement('div');
   proteinGroup.className = 'bank-filter-group';
@@ -757,6 +847,7 @@ function renderBankList(){
   list.innerHTML = '';
 
   let meals = UNIFIED_MEALS.slice();
+  if(bankWhen) meals = meals.filter(m=> m.tags.includes(bankWhen));
   if(bankProtein) meals = meals.filter(m=> m.tags.includes(bankProtein));
   if(bankSpeed) meals = meals.filter(m=> m.tags.includes(bankSpeed));
 
@@ -822,6 +913,87 @@ function renderBankView(){
   renderBankList();
 }
 
+/* ───────────────────────── History (what was actually eaten) ───────────────────────── */
+const HISTORY_KEY = "mealrota_history_v1";
+
+function loadHistory(){
+  try{ const raw = localStorage.getItem(HISTORY_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return {}; // { 'YYYY-MM-DD': {lunch:'', tea:''} }
+}
+function saveHistory(h){ try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }catch(e){} }
+let history = loadHistory();
+let historyEditDate = null; // date currently loaded into the log form
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+function renderHistoryView(){
+  const view = document.getElementById('historyView');
+  const editDate = historyEditDate || todayStr();
+  const existing = history[editDate] || {lunch:'', tea:''};
+
+  view.innerHTML = `
+    <div class="history-log-card">
+      <div class="history-log-title display">Log what you actually ate</div>
+      <div class="history-date-row">
+        <input type="date" class="history-date-input" id="histDate" value="${editDate}">
+      </div>
+      <div class="history-field-label">Lunch</div>
+      <input type="text" class="history-text-input" id="histLunch" placeholder="e.g. leftover pasta" value="${escapeHtml(existing.lunch||'')}">
+      <div class="history-field-label">Tea</div>
+      <input type="text" class="history-text-input" id="histTea" placeholder="e.g. sausage pasta" value="${escapeHtml(existing.tea||'')}">
+      <button class="history-prefill-btn" id="histPrefill">↺ prefill from that day's plan</button>
+      <button class="history-save-btn" id="histSave">Save this day</button>
+    </div>
+    <div class="section-label">Past days</div>
+    <div id="historyList"></div>
+  `;
+
+  document.getElementById('histDate').onchange = (e)=>{ historyEditDate = e.target.value; renderHistoryView(); };
+  document.getElementById('histPrefill').onclick = ()=>{
+    const d = document.getElementById('histDate').value;
+    const {weekKey, dayKey} = weekAndDayForDate(d);
+    const day = template[weekKey][dayKey];
+    document.getElementById('histLunch').value = day.lunch.adults || day.lunch.family || '';
+    document.getElementById('histTea').value = day.tea.adults || day.tea.family || '';
+  };
+  document.getElementById('histSave').onclick = ()=>{
+    const d = document.getElementById('histDate').value;
+    const lunch = document.getElementById('histLunch').value.trim();
+    const tea = document.getElementById('histTea').value.trim();
+    if(!lunch && !tea){ delete history[d]; } else { history[d] = {lunch, tea}; }
+    saveHistory(history);
+    historyEditDate = null;
+    renderHistoryView();
+  };
+
+  renderHistoryList();
+}
+
+function renderHistoryList(){
+  const list = document.getElementById('historyList');
+  const dates = Object.keys(history).sort().reverse();
+  if(dates.length===0){
+    list.innerHTML = `<div class="bank-empty">No days logged yet.</div>`;
+    return;
+  }
+  list.innerHTML = dates.map(d=>{
+    const entry = history[d];
+    const dObj = new Date(d+"T00:00:00");
+    const label = dObj.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+    return `
+      <div class="history-entry">
+        <button class="history-entry-edit" data-date="${d}">edit</button>
+        <div class="history-entry-date">${label}</div>
+        ${entry.lunch ? `<div class="history-entry-row"><b>Lunch</b> — ${escapeHtml(entry.lunch)}</div>` : ''}
+        ${entry.tea ? `<div class="history-entry-row"><b>Tea</b> — ${escapeHtml(entry.tea)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  list.querySelectorAll('.history-entry-edit').forEach(btn=>{
+    btn.onclick = ()=>{ historyEditDate = btn.dataset.date; renderHistoryView(); window.scrollTo({top:0, behavior:'smooth'}); };
+  });
+}
+
 /* ───────────────────────── View switcher ───────────────────────── */
 let currentView = 'rota';
 function setView(v){
@@ -829,7 +1001,9 @@ function setView(v){
   document.querySelectorAll('.view-btn').forEach(b=> b.classList.toggle('active', b.dataset.view===v));
   document.getElementById('mainGrid').style.display = v==='rota' ? '' : 'none';
   document.getElementById('bankView').style.display = v==='bank' ? '' : 'none';
+  document.getElementById('historyView').style.display = v==='history' ? '' : 'none';
   if(v==='bank') renderBankView();
+  if(v==='history') renderHistoryView();
 }
 document.querySelectorAll('.view-btn').forEach(b=>{
   b.onclick = ()=> setView(b.dataset.view);

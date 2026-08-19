@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<!--
+  CHANGELOG
+  v1.1.0 — added visible version tag (footer + title), moved changelog into this comment block
+  v1.0.0 — initial rebuild: single Lunch + Tea slot per day for whole family (replacing old
+           per-person grid); adults-separate slot per day via small "+" toggle next to day name
+           (originally a full extra row, simplified after feedback); 4-week rotating template
+           (A/B/C/D) with header dial showing current week, auto-cycling from an anchor Monday;
+           reused tagged meal bank from the old app plus newly agreed meals (sausage pasta,
+           chicken Kiev, jar curry, salmon teriyaki, bacon carbonara, etc); weeks A/B pre-filled
+           with everything agreed, C/D open except Saturday roast/lasagne alternation; local
+           storage only, no cross-device sync yet
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#16211f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rota">
+<title>Meal Rota v1.1.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#16211f;
+    --surface:#1e2b27;
+    --surface-2:#25342f;
+    --line:#33443d;
+    --paper:#f2ede0;
+    --paper-dim:#c8c2b2;
+    --muted:#8fa39a;
+    --mustard:#d9a441;
+    --mustard-dim:#a87f36;
+    --rose:#c17a6f;
+    --rose-dim:#8f5a52;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--paper);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    padding-bottom:48px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+  .display{font-family:'Fraunces',serif;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  header.top{
+    padding:22px 18px 14px;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:20;
+    background:linear-gradient(180deg, var(--bg) 80%, transparent);
+    backdrop-filter:blur(6px);
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 4px;
+  }
+  h1.title{
+    font-size:26px; font-weight:600; margin:0 0 14px; letter-spacing:-.01em;
+  }
+
+  /* ── Rota dial: the signature element ── */
+  .dial-row{display:flex; align-items:center; gap:14px;}
+  .dial{
+    position:relative; width:52px; height:52px; flex:none;
+  }
+  .dial svg{width:100%; height:100%; display:block;}
+  .dial .now-label{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'Fraunces',serif; font-weight:600; font-size:16px; color:var(--mustard);
+  }
+  .weeks-tabs{display:flex; gap:6px; flex:1;}
+  .wk-tab{
+    flex:1; text-align:center; padding:9px 0 8px; border-radius:10px;
+    background:var(--surface); border:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;
+    color:var(--paper-dim); cursor:pointer; position:relative;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .wk-tab .wk-sub{display:block; font-family:'Inter',sans-serif; font-size:9px; font-weight:500; letter-spacing:.06em; margin-top:2px; opacity:.7; text-transform:uppercase;}
+  .wk-tab.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
+  .wk-tab.is-now::after{
+    content:"today"; position:absolute; top:-9px; right:6px;
+    font-family:'Inter',sans-serif; font-size:8px; letter-spacing:.08em; text-transform:uppercase;
+    background:var(--rose); color:#2a1512; padding:2px 5px; border-radius:5px; font-weight:700;
+  }
+
+  main{padding:16px 14px 0;}
+
+  .day-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    margin-bottom:10px;
+    overflow:hidden;
+  }
+  .day-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 10px 8px 14px;
+  }
+  .day-name{font-family:'Fraunces',serif; font-weight:600; font-size:17px;}
+  .day-head-right{display:flex; align-items:center; gap:8px;}
+  .day-note{font-size:10.5px; color:var(--muted); font-family:'IBM Plex Mono',monospace;}
+  .adults-toggle{
+    flex:none; width:24px; height:24px; border-radius:50%;
+    border:1px solid var(--rose-dim); background:none; color:var(--rose);
+    font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    padding:0;
+  }
+  .adults-toggle.open{background:var(--rose); color:#2a1512; border-color:var(--rose);}
+  .slots{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line);}
+  .slot{background:var(--surface); padding:10px 12px 12px;}
+  .slot-label{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:6px; display:block;
+  }
+  .meal-pill{
+    display:block; width:100%; text-align:left;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:9px;
+    color:var(--paper); font-family:'Inter',sans-serif; font-size:13.5px; font-weight:500;
+    padding:9px 10px; margin-bottom:6px; cursor:pointer; min-height:38px;
+    display:flex; align-items:center; line-height:1.25;
+  }
+  .meal-pill.empty{color:var(--muted); font-style:italic; font-weight:400;}
+  .meal-pill.family{border-left:3px solid var(--mustard);}
+  .meal-pill.adults{border-left:3px solid var(--rose);}
+
+  .section-label{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:22px 4px 8px;
+  }
+
+  /* ── Meal bank sheet ── */
+  .sheet-backdrop{
+    position:fixed; inset:0; background:rgba(10,14,13,.72); z-index:50;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .sheet-backdrop.open{display:flex;}
+  .sheet{
+    background:var(--bg); width:100%; max-width:520px; max-height:82vh;
+    border-radius:20px 20px 0 0; border:1px solid var(--line); border-bottom:none;
+    padding:14px 14px calc(18px + env(safe-area-inset-bottom));
+    display:flex; flex-direction:column;
+    animation:sheetUp .22s ease-out;
+  }
+  @keyframes sheetUp{from{transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;}}
+  .sheet-handle{width:36px; height:4px; background:var(--line); border-radius:3px; margin:0 auto 12px;}
+  .sheet-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .sheet-title{font-family:'Fraunces',serif; font-weight:600; font-size:18px;}
+  .sheet-close{background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px;}
+  .chip-row{display:flex; gap:6px; overflow-x:auto; padding-bottom:10px; margin-bottom:8px; border-bottom:1px solid var(--line);}
+  .chip{
+    flex:none; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 11px;
+    border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
+    cursor:pointer; white-space:nowrap;
+  }
+  .chip.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
+  .meal-list{overflow-y:auto; flex:1;}
+  .meal-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:11px 4px; border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .meal-row-name{font-size:14.5px;}
+  .meal-row-tags{font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted);}
+  .clear-row{color:var(--rose); text-align:center; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12px; cursor:pointer;}
+
+  .footer-note{
+    text-align:center; color:var(--muted); font-size:11px; font-family:'IBM Plex Mono',monospace;
+    padding:20px 20px 6px; line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <p class="eyebrow">Family meal rota</p>
+  <h1 class="title display">The Rotation</h1>
+  <div class="dial-row">
+    <div class="dial">
+      <svg viewBox="0 0 52 52">
+        <circle cx="26" cy="26" r="22" fill="none" stroke="#33443d" stroke-width="4"/>
+        <circle id="dialArc" cx="26" cy="26" r="22" fill="none" stroke="#d9a441" stroke-width="4"
+          stroke-linecap="round" stroke-dasharray="34.5 138" transform="rotate(-90 26 26)"/>
+      </svg>
+      <div class="now-label mono" id="dialLabel">A</div>
+    </div>
+    <div class="weeks-tabs" id="weekTabs"></div>
+  </div>
+</header>
+
+<main id="mainGrid"></main>
+
+<p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only<br><span id="versionTag" class="mono"></span></p>
+
+<div class="sheet-backdrop" id="sheetBackdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title display" id="sheetTitle">Pick a meal</div>
+      <button class="sheet-close" id="sheetClose">✕</button>
+    </div>
+    <div class="chip-row" id="chipRow"></div>
+    <div class="clear-row" id="clearRow">— clear this slot —</div>
+    <div class="meal-list" id="mealList"></div>
+  </div>
+</div>
+
+<script>
+const APP_VERSION = "1.1.0";
+const UNIFIED_MEALS = [
+  {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
+  {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
+  {name:"Fish pie", tags:["tea","fish","everyone","slow","bake"]},
+  {name:"Lasagne", tags:["tea","beef","everyone","slow","pasta"]},
+  {name:"Fish cakes + wedges", tags:["tea","fish","everyone","medium"]},
+  {name:"Stir fry", tags:["tea","chicken","everyone","quick"]},
+  {name:"Tinga + rice", tags:["tea","chicken","everyone","medium","rice"]},
+  {name:"Cottage pie", tags:["tea","beef","everyone","slow","bake"]},
+  {name:"Chicken & leek bake", tags:["tea","chicken","everyone","medium","bake"]},
+  {name:"Burgers", tags:["tea","beef","everyone","quick"]},
+  {name:"Sausage orzo", tags:["tea","pork","everyone","medium","pasta","one-pot"]},
+  {name:"One pot garlic chicken", tags:["tea","chicken","everyone","medium","one-pot"]},
+  {name:"Teriyaki skewers", tags:["tea","chicken","everyone","medium","rice"]},
+  {name:"Chilli", tags:["tea","beef","everyone","medium","one-pot"]},
+  {name:"Pizza", tags:["tea","everyone","quick"]},
+  {name:"Roast", tags:["tea","everyone","slow"]},
+  {name:"Fajitas", tags:["tea","chicken","everyone","quick"]},
+  {name:"Tortellini", tags:["tea","everyone","quick","pasta"]},
+  {name:"Pulled pork fajitas", tags:["tea","pork","everyone","slow"]},
+  {name:"Tuna pasta", tags:["tea","fish","everyone","quick","pasta"]},
+  {name:"Mozzarella melts", tags:["tea","everyone","quick"]},
+  {name:"Sausage and veg and potatoes", tags:["tea","pork","everyone","medium","one-tray"]},
+  {name:"Fish fingers and veg and beans", tags:["tea","fish","everyone","quick"]},
+  {name:"Laksa", tags:["tea","chicken","adults","medium"]},
+  {name:"Thai curry", tags:["tea","chicken","adults","medium","curry"]},
+  {name:"Indian curry", tags:["tea","chicken","adults","medium","curry"]},
+  {name:"Fajita + nachos", tags:["tea","chicken","adults","quick"]},
+  {name:"Loaded nachos", tags:["tea","beef","adults","quick"]},
+  {name:"Sourdough chicken kievs", tags:["tea","chicken","adults","medium"]},
+  {name:"Mushroom burgers", tags:["tea","veggie","adults","quick"]},
+  {name:"Spinach ricotta pasta bake", tags:["tea","veggie","adults","medium","pasta","bake"]},
+  {name:"Greek feta salad", tags:["tea","veggie","adults","quick","salad"]},
+  {name:"Aioli roast veg + chorizo + potato", tags:["tea","pork","adults","medium","one-tray"]},
+  {name:"Marry me chicken", tags:["tea","chicken","adults","medium"]},
+  {name:"Marry me salmon", tags:["tea","fish","adults","medium"]},
+  {name:"Chicken Alfredo", tags:["tea","chicken","kids","quick","pasta"]},
+  {name:"Pitta pizza", tags:["lunch","tea","kids","quick"]},
+  {name:"Fish fingers + wedges", tags:["tea","fish","kids","quick"]},
+  {name:"Porridge fingers", tags:["tea","kids","quick"]},
+  {name:"Mac & cheese", tags:["tea","veggie","kids","medium","pasta"]},
+  {name:"Pasta sauce", tags:["tea","veggie","kids","quick","pasta"]},
+  {name:"Snack Attack", tags:["tea","kids","quick"]},
+  {name:"Dairylea Dunker", tags:["tea","kids","quick"]},
+  {name:"Karen's", tags:["lunch","tea","everyone"]},
+  {name:"Nursery", tags:["lunch","tea","everyone"]},
+  {name:"MIRA", tags:["lunch","tea","everyone"]},
+  {name:"Sandwich", tags:["lunch","everyone","quick"]},
+  {name:"Salad pot", tags:["lunch","adults","quick","salad"]},
+  {name:"Pasta and sauce", tags:["lunch","everyone","quick","pasta"]},
+  {name:"Pinwheels", tags:["lunch","everyone","quick"]},
+  {name:"Quiche", tags:["lunch","everyone","medium"]},
+  {name:"Soup", tags:["lunch","everyone","quick"]},
+  {name:"Fish finger sandwiches", tags:["lunch","fish","everyone","quick"]},
+  {name:"Pâté", tags:["lunch","adults","quick"]},
+  {name:"Pizza pockets", tags:["lunch","kids","quick"]},
+  {name:"Omelette", tags:["lunch","egg","everyone","quick"]},
+  {name:"Scrambled eggs", tags:["lunch","egg","everyone","quick"]},
+  {name:"Tortilla", tags:["lunch","kids","quick"]},
+  {name:"PB toast", tags:["lunch","kids","quick"]},
+  {name:"Avo toast", tags:["lunch","everyone","quick"]},
+  {name:"Crumpets", tags:["lunch","kids","quick"]},
+  // ── newly agreed additions from the planning conversation ──
+  {name:"Sausage pasta", tags:["tea","pork","everyone","medium","pasta"], note:"hidden-veg tomato sauce"},
+  {name:"Chicken Kiev + wedges + sweetcorn", tags:["tea","chicken","everyone","medium"]},
+  {name:"Jar curry", tags:["tea","chicken","adults","quick","curry"]},
+  {name:"Salmon teriyaki + wedges", tags:["tea","fish","adults","medium"]},
+  {name:"Salmon teriyaki + rice + veg", tags:["tea","fish","adults","medium","rice"]},
+  {name:"Bacon carbonara", tags:["tea","pork","adults","quick","pasta"]},
+  {name:"Carbonara + garlic bread", tags:["tea","pork","everyone","quick","pasta"]},
+];
+
+/* ───────────────────────── Rota template data ───────────────────────── */
+const DAYS = [
+  {key:"mon", label:"Monday"},
+  {key:"tue", label:"Tuesday"},
+  {key:"wed", label:"Wednesday"},
+  {key:"thu", label:"Thursday"},
+  {key:"fri", label:"Friday"},
+  {key:"sat", label:"Saturday"},
+  {key:"sun", label:"Sunday"},
+];
+const WEEK_KEYS = ["A","B","C","D"];
+
+// Each day: { lunch:{family, adults}, tea:{family, adults} }
+function emptyDay(){ return {lunch:{family:null, adults:null}, tea:{family:null, adults:null}, adultsOpen:false}; }
+function emptyWeek(){ const w={}; DAYS.forEach(d=>w[d.key]=emptyDay()); return w; }
+
+const DEFAULT_TEMPLATE = {
+  A: {
+    mon:{lunch:{family:null,adults:null}, tea:{family:null, adults:"Stir fry"}, adultsOpen:true},
+    tue:{lunch:{family:null,adults:null}, tea:{family:"Sausage pasta", adults:null}, adultsOpen:false},
+    wed:{lunch:{family:null,adults:null}, tea:{family:"Chicken Kiev + wedges + sweetcorn", adults:"Salmon teriyaki + wedges"}, adultsOpen:true},
+    thu:{lunch:{family:null,adults:null}, tea:{family:null, adults:"Jar curry"}, adultsOpen:true},
+    fri:{lunch:{family:null,adults:null}, tea:{family:null, adults:"Fajitas"}, adultsOpen:true},
+    sat:{lunch:{family:null,adults:null}, tea:{family:"Roast", adults:null}, adultsOpen:false},
+    sun:{lunch:{family:null,adults:null}, tea:{family:"Fish pie", adults:null}, adultsOpen:false},
+  },
+  B: {
+    mon:{lunch:{family:null,adults:null}, tea:{family:null, adults:null}, adultsOpen:false},
+    tue:{lunch:{family:null,adults:null}, tea:{family:null, adults:null}, adultsOpen:false},
+    wed:{lunch:{family:null,adults:null}, tea:{family:"Carbonara + garlic bread", adults:null}, adultsOpen:false},
+    thu:{lunch:{family:null,adults:null}, tea:{family:null, adults:"Salmon teriyaki + rice + veg"}, adultsOpen:true},
+    fri:{lunch:{family:null,adults:null}, tea:{family:null, adults:"Loaded nachos"}, adultsOpen:true},
+    sat:{lunch:{family:null,adults:null}, tea:{family:"Lasagne", adults:null}, adultsOpen:false},
+    sun:{lunch:{family:null,adults:null}, tea:{family:null, adults:null}, adultsOpen:false},
+  },
+  C: emptyWeek(),
+  D: emptyWeek(),
+};
+// C and D Saturdays follow the roast/lasagne alternation already agreed
+DEFAULT_TEMPLATE.C.sat.tea.family = "Roast";
+DEFAULT_TEMPLATE.D.sat.tea.family = "Lasagne";
+
+const DAY_NOTES = {
+  A:{mon:"adults only · flap night", tue:"Em solo w/ both kids", wed:"kids + adults separate", thu:"adults only · cook together", fri:"adults only · Mexican night", sat:"everyone · big cook", sun:"everyone · big cook, doubles as leftovers"},
+  B:{mon:"adults only", tue:"Em solo w/ both kids", wed:"everyone", thu:"adults only · cook together", fri:"adults only · Mexican night", sat:"everyone · big cook", sun:"everyone · big cook"},
+  C:{mon:"adults only", tue:"Em solo w/ both kids", wed:"everyone", thu:"adults only · cook together", fri:"adults only · Mexican night", sat:"everyone · big cook", sun:"everyone · big cook"},
+  D:{mon:"adults only", tue:"Em solo w/ both kids", wed:"everyone", thu:"adults only · cook together", fri:"adults only · Mexican night", sat:"everyone · big cook", sun:"everyone · big cook"},
+};
+
+/* ───────────────────────── State / persistence ───────────────────────── */
+const STORE_KEY = "mealrota_template_v1";
+const ANCHOR_KEY = "mealrota_anchor_v1"; // Monday date string that = start of Week A
+
+function loadTemplate(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_TEMPLATE));
+}
+function saveTemplate(t){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(t)); }catch(e){}
+}
+function getAnchorMonday(){
+  let a = localStorage.getItem(ANCHOR_KEY);
+  if(!a){
+    // default anchor: the most recent Monday
+    const now = new Date();
+    const day = now.getDay(); // 0 Sun .. 6 Sat
+    const diff = (day===0? -6 : 1-day);
+    const monday = new Date(now); monday.setDate(now.getDate()+diff);
+    a = monday.toISOString().slice(0,10);
+    localStorage.setItem(ANCHOR_KEY, a);
+  }
+  return new Date(a+"T00:00:00");
+}
+function currentWeekIndex(){
+  const anchor = getAnchorMonday();
+  const now = new Date();
+  const day = now.getDay();
+  const diff = (day===0? -6 : 1-day);
+  const thisMonday = new Date(now); thisMonday.setDate(now.getDate()+diff);
+  const weeksSince = Math.round((thisMonday - anchor) / (7*24*3600*1000));
+  return ((weeksSince % 4) + 4) % 4; // 0..3
+}
+
+let template = loadTemplate();
+let activeWeek = WEEK_KEYS[currentWeekIndex()];
+let sheetTarget = null; // {week, day, slot: 'lunch'|'tea', who: 'family'|'adults'}
+let sheetFilter = null; // active tag chip
+
+/* ───────────────────────── Render: header dial + tabs ───────────────────────── */
+function renderHeader(){
+  const idx = currentWeekIndex();
+  document.getElementById('dialLabel').textContent = WEEK_KEYS[idx];
+  const arc = document.getElementById('dialArc');
+  const circumference = 2*Math.PI*22;
+  const quarter = circumference/4;
+  arc.setAttribute('stroke-dasharray', `${quarter} ${circumference}`);
+  arc.setAttribute('transform', `rotate(${-90 + idx*90} 26 26)`);
+
+  const tabs = document.getElementById('weekTabs');
+  tabs.innerHTML = '';
+  WEEK_KEYS.forEach((wk,i)=>{
+    const el = document.createElement('div');
+    el.className = 'wk-tab' + (wk===activeWeek?' active':'') + (i===idx?' is-now':'');
+    el.innerHTML = `Week ${wk}<span class="wk-sub">${countFilled(wk)}/14 set</span>`;
+    el.onclick = ()=>{ activeWeek = wk; renderAll(); };
+    tabs.appendChild(el);
+  });
+}
+function countFilled(wk){
+  let n=0;
+  DAYS.forEach(d=>{
+    const day = template[wk][d.key];
+    if(day.lunch.family) n++;
+    if(day.tea.family || day.tea.adults) n++;
+  });
+  return n;
+}
+
+/* ───────────────────────── Render: day grid ───────────────────────── */
+function pillHtml(text, who, empty){
+  const cls = who==='family' ? 'family' : 'adults';
+  return `<div class="meal-pill ${cls} ${empty?'empty':''}">${empty ? 'tap to set' : escapeHtml(text)}</div>`;
+}
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderGrid(){
+  const main = document.getElementById('mainGrid');
+  main.innerHTML = '';
+  const label = document.createElement('div');
+  label.className = 'section-label';
+  label.textContent = `Week ${activeWeek}`;
+  main.appendChild(label);
+
+  DAYS.forEach(d=>{
+    const day = template[activeWeek][d.key];
+    const note = (DAY_NOTES[activeWeek] && DAY_NOTES[activeWeek][d.key]) || '';
+    const card = document.createElement('div');
+    card.className = 'day-card';
+
+    const adultsOpen = !!day.adultsOpen;
+
+    card.innerHTML = `
+      <div class="day-head">
+        <div class="day-name">${d.label}</div>
+        <div class="day-head-right">
+          <div class="day-note">${note}</div>
+          <button class="adults-toggle ${adultsOpen?'open':''}" data-role="adults-toggle" title="Adults eating separately">${adultsOpen ? '−' : '+'}</button>
+        </div>
+      </div>
+      <div class="slots">
+        <div class="slot" data-slot="lunch">
+          <span class="slot-label">Lunch</span>
+          <div data-role="lunch-family"></div>
+          <div data-role="lunch-adults-wrap"></div>
+        </div>
+        <div class="slot" data-slot="tea">
+          <span class="slot-label">Tea</span>
+          <div data-role="tea-family"></div>
+          <div data-role="tea-adults-wrap"></div>
+        </div>
+      </div>
+    `;
+
+    card.querySelector('[data-role="adults-toggle"]').onclick = ()=>{
+      day.adultsOpen = !day.adultsOpen;
+      if(!day.adultsOpen){ day.lunch.adults = null; day.tea.adults = null; }
+      saveTemplate(template);
+      renderAll();
+    };
+
+    const lunchFamilyWrap = card.querySelector('[data-role="lunch-family"]');
+    lunchFamilyWrap.innerHTML = pillHtml(day.lunch.family, 'family', !day.lunch.family);
+    lunchFamilyWrap.onclick = ()=> openSheet(d.key, 'lunch', 'family');
+
+    const teaFamilyWrap = card.querySelector('[data-role="tea-family"]');
+    teaFamilyWrap.innerHTML = pillHtml(day.tea.family, 'family', !day.tea.family);
+    teaFamilyWrap.onclick = ()=> openSheet(d.key, 'tea', 'family');
+
+    const lunchAdultsWrap = card.querySelector('[data-role="lunch-adults-wrap"]');
+    if(!adultsOpen){
+      lunchAdultsWrap.innerHTML = '';
+      lunchAdultsWrap.onclick = null;
+    } else if(day.lunch.adults){
+      lunchAdultsWrap.innerHTML = pillHtml(day.lunch.adults, 'adults', false);
+      lunchAdultsWrap.onclick = ()=> openSheet(d.key, 'lunch', 'adults');
+    } else {
+      lunchAdultsWrap.innerHTML = pillHtml(null, 'adults', true);
+      lunchAdultsWrap.onclick = ()=> openSheet(d.key, 'lunch', 'adults');
+    }
+
+    const teaAdultsWrap = card.querySelector('[data-role="tea-adults-wrap"]');
+    if(!adultsOpen){
+      teaAdultsWrap.innerHTML = '';
+      teaAdultsWrap.onclick = null;
+    } else if(day.tea.adults){
+      teaAdultsWrap.innerHTML = pillHtml(day.tea.adults, 'adults', false);
+      teaAdultsWrap.onclick = ()=> openSheet(d.key, 'tea', 'adults');
+    } else {
+      teaAdultsWrap.innerHTML = pillHtml(null, 'adults', true);
+      teaAdultsWrap.onclick = ()=> openSheet(d.key, 'tea', 'adults');
+    }
+
+    main.appendChild(card);
+  });
+}
+
+/* ───────────────────────── Meal bank sheet ───────────────────────── */
+const CHIP_TAGS = ["quick","medium","slow","chicken","beef","pork","fish","veggie","egg","pasta","curry"];
+
+function openSheet(dayKey, slot, who){
+  sheetTarget = {week:activeWeek, day:dayKey, slot, who};
+  sheetFilter = null;
+  const dayLabel = DAYS.find(d=>d.key===dayKey).label;
+  document.getElementById('sheetTitle').textContent =
+    `${dayLabel} ${slot==='lunch'?'lunch':'tea'} — ${who==='family'?'everyone':'adults'}`;
+  renderChips();
+  renderMealList();
+  document.getElementById('sheetBackdrop').classList.add('open');
+}
+function closeSheet(){
+  document.getElementById('sheetBackdrop').classList.remove('open');
+  sheetTarget = null;
+}
+document.getElementById('sheetClose').onclick = closeSheet;
+document.getElementById('sheetBackdrop').addEventListener('click', e=>{
+  if(e.target.id==='sheetBackdrop') closeSheet();
+});
+document.getElementById('clearRow').onclick = ()=>{
+  if(!sheetTarget) return;
+  const {week, day, slot, who} = sheetTarget;
+  template[week][day][slot][who] = null;
+  saveTemplate(template);
+  closeSheet();
+  renderAll();
+};
+
+function renderChips(){
+  const row = document.getElementById('chipRow');
+  row.innerHTML = '';
+  CHIP_TAGS.forEach(tag=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (sheetFilter===tag?' active':'');
+    chip.textContent = tag;
+    chip.onclick = ()=>{ sheetFilter = (sheetFilter===tag ? null : tag); renderChips(); renderMealList(); };
+    row.appendChild(chip);
+  });
+}
+function renderMealList(){
+  const list = document.getElementById('mealList');
+  list.innerHTML = '';
+  const when = sheetTarget.slot; // 'lunch' or 'tea'
+  let meals = UNIFIED_MEALS.filter(m=> m.tags.includes(when));
+  if(sheetFilter) meals = meals.filter(m=> m.tags.includes(sheetFilter));
+  meals.forEach(m=>{
+    const row = document.createElement('div');
+    row.className = 'meal-row';
+    row.innerHTML = `<span class="meal-row-name">${escapeHtml(m.name)}</span><span class="meal-row-tags mono">${m.tags.filter(t=>t!=='lunch'&&t!=='tea').join(' · ')}</span>`;
+    row.onclick = ()=>{
+      const {week, day, slot, who} = sheetTarget;
+      template[week][day][slot][who] = m.name;
+      saveTemplate(template);
+      closeSheet();
+      renderAll();
+    };
+    list.appendChild(row);
+  });
+  if(meals.length===0){
+    list.innerHTML = `<div style="padding:20px 4px; color:var(--muted); font-size:13px;">No meals tagged for this yet — add one in the meal bank.</div>`;
+  }
+}
+
+/* ───────────────────────── Boot ───────────────────────── */
+function renderAll(){ renderHeader(); renderGrid(); }
+document.getElementById('versionTag').textContent = `v${APP_VERSION}`;
+document.title = `Meal Rota v${APP_VERSION}`;
+renderAll();
+
+// PWA basics
+if('serviceWorker' in navigator){
+  // no-op placeholder; add sw.js once hosted if offline caching wanted
+}
+</script>
+</body>
+</html>

@@ -1,15 +1,69 @@
 <!DOCTYPE html>
 <!--
-  CHANGELOG
-  v1.1.0 — added visible version tag (footer + title), moved changelog into this comment block
-  v1.0.0 — initial rebuild: single Lunch + Tea slot per day for whole family (replacing old
-           per-person grid); adults-separate slot per day via small "+" toggle next to day name
-           (originally a full extra row, simplified after feedback); 4-week rotating template
-           (A/B/C/D) with header dial showing current week, auto-cycling from an anchor Monday;
-           reused tagged meal bank from the old app plus newly agreed meals (sausage pasta,
-           chicken Kiev, jar curry, salmon teriyaki, bacon carbonara, etc); weeks A/B pre-filled
-           with everything agreed, C/D open except Saturday roast/lasagne alternation; local
-           storage only, no cross-device sync yet
+  ═══════════════════════════════════════════════════════════════════════
+  MEAL ROTA — HANDOFF NOTES (read this first in any new Claude chat)
+  ═══════════════════════════════════════════════════════════════════════
+
+  WHAT THIS IS
+  A single-file PWA for a 4-week rotating family meal template (Week A/B/C/D).
+  Replaces an older per-person Lunch/Tea grid app (bengalebg23/Meal-planner)
+  which was too fiddly to keep up with day to day. This version: one Lunch +
+  one Tea slot per day for the whole family, with an optional adults-eat-
+  different slot toggled per day. Repo: bengalebg23/MealRota, served via
+  GitHub Pages at bengalebg23.github.io/MealRota/.
+
+  ARCHITECTURE
+  - Single index.html, vanilla JS, no build step, no frameworks.
+  - UNIFIED_MEALS array = the meal bank (name + tags: when/protein/who/speed/style).
+    Carried over from the old Meal-planner app's meal bank, plus meals agreed
+    during the planning conversation (sausage pasta, chicken Kiev, jar curry,
+    salmon teriyaki, bacon carbonara, etc).
+  - template object = the 4-week plan: template[weekKey][dayKey] = 
+    { lunch:{family, adults}, tea:{family, adults}, adultsOpen }
+  - Persistence: localStorage only (STORE_KEY, ANCHOR_KEY). NOT synced across
+    devices yet — Firebase sync (like the Pokedex/House Ledger/Meal-planner
+    apps use) was deferred until this simpler shape was confirmed. Still open.
+  - "Rota dial" in the header computes which week (A/B/C/D) you're actually
+    in this week from an anchor Monday date, cycling automatically every 4
+    weeks — this is the whole point of the rebuild (no more weekly re-planning).
+
+  FEATURE HISTORY / CHANGELOG
+  v1.2.1 — moved the version number out of the tiny footer into a visible badge
+           next to the page title, so it's obvious at a glance without scrolling.
+  v1.2.0 — added a Meal Bank browse tab (separate from the weekly rota view):
+           meals shown as compact pills (name only, tags hidden until tapped),
+           filter by protein + speed, sort by name/protein/speed with grouped
+           headers. Folded full handoff notes into this comment block instead
+           of a separate file, matching lesson learned on the Pokedex app.
+  v1.1.0 — added visible version tag (footer + title); versioned filename
+           (meal-rota-vX.X.X.html) adopted to avoid Android's download-suffix
+           overwrite issue — same fix used on the Pokedex app.
+  v1.0.0 — initial rebuild: single Lunch + Tea slot per day for whole family
+           (replacing old per-person grid); adults-separate slot per day via
+           small "+" toggle next to day name (originally a full extra always-
+           visible row, simplified after feedback); 4-week rotating template
+           with header dial; weeks A/B pre-filled with everything agreed during
+           planning, C/D open except Saturday roast/lasagne alternation.
+
+  LESSONS LEARNED (carried over from other apps in this family of tools)
+  - Android doesn't overwrite same-named downloaded files, it appends a suffix
+    (file-20.html etc) — always embed the version number in the filename.
+  - Keep the meal bank reusable across rebuilds; it's the expensive part to
+    maintain (tags), the grid/UI around it is cheap to redo.
+
+  OPEN THREADS / TODO
+  - Weeks C and D are still mostly empty (only the Saturday roast/lasagne
+    alternation is set).
+  - No cross-device sync yet (Firebase, like the other household apps have).
+  - Lunch slots are almost entirely unplanned — only Tea has been worked
+    through in detail so far.
+
+  HOW TO PICK THIS UP IN A NEW CHAT
+  Paste this file (or point at the GitHub repo) and summarise: "continuing
+  work on the MealRota app, see the handoff comment at the top of index.html."
+  No need to keep one long conversation open — this comment block plus the
+  code itself should be enough context for a fresh chat to carry on.
+  ═══════════════════════════════════════════════════════════════════════
 -->
 <html lang="en">
 <head>
@@ -19,7 +73,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.1.0</title>
+<title>Meal Rota v1.2.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -36,6 +90,13 @@
     --mustard-dim:#a87f36;
     --rose:#c17a6f;
     --rose-dim:#8f5a52;
+    --c-chicken:#d9a441;
+    --c-beef:#c17a6f;
+    --c-pork:#c48a5c;
+    --c-fish:#6fa8a3;
+    --c-veggie:#7fa691;
+    --c-egg:#cbbf8a;
+    --c-default:#8fa39a;
     --radius:14px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -66,7 +127,16 @@
     color:var(--muted); margin:0 0 4px;
   }
   h1.title{
-    font-size:26px; font-weight:600; margin:0 0 14px; letter-spacing:-.01em;
+    font-size:26px; font-weight:600; margin:0; letter-spacing:-.01em;
+  }
+  .title-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin:0 0 14px;
+  }
+  .version-badge{
+    flex:none; font-size:12px; font-weight:600; color:var(--mustard);
+    background:var(--surface); border:1px solid var(--mustard-dim);
+    padding:5px 10px; border-radius:20px;
   }
 
   /* ── Rota dial: the signature element ── */
@@ -178,13 +248,60 @@
     text-align:center; color:var(--muted); font-size:11px; font-family:'IBM Plex Mono',monospace;
     padding:20px 20px 6px; line-height:1.6;
   }
+
+  /* ── View switcher ── */
+  .view-switch{display:flex; gap:6px; margin-top:12px; background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:3px;}
+  .view-btn{
+    flex:1; background:none; border:none; padding:8px 0; border-radius:8px;
+    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600; color:var(--paper-dim);
+    cursor:pointer;
+  }
+  .view-btn.active{background:var(--mustard); color:#1c1509;}
+
+  /* ── Meal bank browse ── */
+  .bank-controls{padding:14px 4px 4px;}
+  .bank-filter-group{margin-bottom:10px;}
+  .bank-filter-label{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:0 0 6px 4px;}
+  .bank-chip-row{display:flex; gap:6px; overflow-x:auto; padding-bottom:2px;}
+  .bank-chip{
+    flex:none; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 12px;
+    border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
+    cursor:pointer; white-space:nowrap;
+  }
+  .bank-chip.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
+  .bank-sort-row{display:flex; gap:6px; margin-top:2px;}
+  .bank-sort-btn{
+    flex:1; font-family:'Inter',sans-serif; font-size:11.5px; font-weight:500; padding:7px 0;
+    border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim); cursor:pointer;
+  }
+  .bank-sort-btn.active{background:var(--surface-2); color:var(--paper); border-color:var(--mustard);}
+
+  .bank-group-title{
+    font-family:'Fraunces',serif; font-weight:600; font-size:14px; color:var(--paper-dim);
+    margin:16px 4px 8px; text-transform:capitalize;
+  }
+  .bank-pill-wrap{display:flex; flex-wrap:wrap; gap:7px; padding:0 4px;}
+  .bank-pill{
+    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:500; color:var(--paper);
+    background:var(--surface-2); border:1px solid var(--line); border-left-width:3px;
+    border-radius:20px; padding:7px 12px; cursor:pointer;
+  }
+  .bank-pill-tags{
+    font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted);
+    padding:2px 4px 4px; width:100%;
+  }
+  .bank-empty{color:var(--muted); font-size:13px; padding:20px 8px; text-align:center;}
+
 </style>
 </head>
 <body>
 
 <header class="top">
   <p class="eyebrow">Family meal rota</p>
-  <h1 class="title display">The Rotation</h1>
+  <div class="title-row">
+    <h1 class="title display">The Rotation</h1>
+    <span class="version-badge mono" id="versionBadge"></span>
+  </div>
   <div class="dial-row">
     <div class="dial">
       <svg viewBox="0 0 52 52">
@@ -196,11 +313,16 @@
     </div>
     <div class="weeks-tabs" id="weekTabs"></div>
   </div>
+  <div class="view-switch" id="viewSwitch">
+    <button class="view-btn active" data-view="rota">This week</button>
+    <button class="view-btn" data-view="bank">Meal bank</button>
+  </div>
 </header>
 
 <main id="mainGrid"></main>
+<main id="bankView" style="display:none;"></main>
 
-<p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only<br><span id="versionTag" class="mono"></span></p>
+<p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only</p>
 
 <div class="sheet-backdrop" id="sheetBackdrop">
   <div class="sheet">
@@ -216,7 +338,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.1";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -563,9 +685,159 @@ function renderMealList(){
   }
 }
 
+/* ───────────────────────── Meal bank browse view ───────────────────────── */
+const PROTEIN_TAGS = ["chicken","beef","pork","fish","veggie","egg"];
+const SPEED_TAGS = ["quick","medium","slow"];
+const PROTEIN_COLOR = {chicken:"var(--c-chicken)", beef:"var(--c-beef)", pork:"var(--c-pork)", fish:"var(--c-fish)", veggie:"var(--c-veggie)", egg:"var(--c-egg)"};
+
+let bankProtein = null;   // one of PROTEIN_TAGS or null
+let bankSpeed = null;     // one of SPEED_TAGS or null
+let bankSort = "name";    // "name" | "protein" | "speed"
+let bankExpanded = new Set(); // meal names with tags currently shown
+
+function proteinOf(m){ return PROTEIN_TAGS.find(t=> m.tags.includes(t)) || null; }
+function speedOf(m){ return SPEED_TAGS.find(t=> m.tags.includes(t)) || null; }
+function pillColor(m){
+  const p = proteinOf(m);
+  return p ? PROTEIN_COLOR[p] : "var(--c-default)";
+}
+
+function renderBankControls(){
+  const wrap = document.getElementById('bankControls');
+  wrap.innerHTML = '';
+
+  const proteinGroup = document.createElement('div');
+  proteinGroup.className = 'bank-filter-group';
+  proteinGroup.innerHTML = `<div class="bank-filter-label">Protein</div>`;
+  const proteinRow = document.createElement('div');
+  proteinRow.className = 'bank-chip-row';
+  [{key:null,label:'all'}, ...PROTEIN_TAGS.map(t=>({key:t,label:t}))].forEach(opt=>{
+    const chip = document.createElement('div');
+    chip.className = 'bank-chip' + (bankProtein===opt.key ? ' active':'');
+    chip.textContent = opt.label;
+    chip.onclick = ()=>{ bankProtein = opt.key; renderBankControls(); renderBankList(); };
+    proteinRow.appendChild(chip);
+  });
+  proteinGroup.appendChild(proteinRow);
+  wrap.appendChild(proteinGroup);
+
+  const speedGroup = document.createElement('div');
+  speedGroup.className = 'bank-filter-group';
+  speedGroup.innerHTML = `<div class="bank-filter-label">Speed</div>`;
+  const speedRow = document.createElement('div');
+  speedRow.className = 'bank-chip-row';
+  [{key:null,label:'all'}, ...SPEED_TAGS.map(t=>({key:t,label:t}))].forEach(opt=>{
+    const chip = document.createElement('div');
+    chip.className = 'bank-chip' + (bankSpeed===opt.key ? ' active':'');
+    chip.textContent = opt.label;
+    chip.onclick = ()=>{ bankSpeed = opt.key; renderBankControls(); renderBankList(); };
+    speedRow.appendChild(chip);
+  });
+  speedGroup.appendChild(speedRow);
+  wrap.appendChild(speedGroup);
+
+  const sortGroup = document.createElement('div');
+  sortGroup.className = 'bank-filter-group';
+  sortGroup.innerHTML = `<div class="bank-filter-label">Sort by</div>`;
+  const sortRow = document.createElement('div');
+  sortRow.className = 'bank-sort-row';
+  [{key:'name',label:'A–Z'}, {key:'protein',label:'Protein'}, {key:'speed',label:'Speed'}].forEach(opt=>{
+    const btn = document.createElement('button');
+    btn.className = 'bank-sort-btn' + (bankSort===opt.key ? ' active':'');
+    btn.textContent = opt.label;
+    btn.onclick = ()=>{ bankSort = opt.key; renderBankControls(); renderBankList(); };
+    sortRow.appendChild(btn);
+  });
+  sortGroup.appendChild(sortRow);
+  wrap.appendChild(sortGroup);
+}
+
+function renderBankList(){
+  const list = document.getElementById('bankList');
+  list.innerHTML = '';
+
+  let meals = UNIFIED_MEALS.slice();
+  if(bankProtein) meals = meals.filter(m=> m.tags.includes(bankProtein));
+  if(bankSpeed) meals = meals.filter(m=> m.tags.includes(bankSpeed));
+
+  if(meals.length===0){
+    list.innerHTML = `<div class="bank-empty">No meals match those filters.</div>`;
+    return;
+  }
+
+  function renderPillGroup(container, mealsIn){
+    const pillWrap = document.createElement('div');
+    pillWrap.className = 'bank-pill-wrap';
+    mealsIn.slice().sort((a,b)=> a.name.localeCompare(b.name)).forEach(m=>{
+      const pill = document.createElement('div');
+      pill.className = 'bank-pill';
+      pill.style.borderLeftColor = pillColor(m);
+      pill.textContent = m.name;
+      pill.onclick = ()=>{
+        if(bankExpanded.has(m.name)) bankExpanded.delete(m.name); else bankExpanded.add(m.name);
+        renderBankList();
+      };
+      pillWrap.appendChild(pill);
+      if(bankExpanded.has(m.name)){
+        const tagsEl = document.createElement('div');
+        tagsEl.className = 'bank-pill-tags mono';
+        tagsEl.textContent = m.tags.join(' · ') + (m.note ? ' · ' + m.note : '');
+        pillWrap.appendChild(tagsEl);
+      }
+    });
+    container.appendChild(pillWrap);
+  }
+
+  if(bankSort === 'name'){
+    renderPillGroup(list, meals);
+  } else {
+    const groupTags = bankSort === 'protein' ? PROTEIN_TAGS : SPEED_TAGS;
+    groupTags.forEach(tag=>{
+      const inGroup = meals.filter(m=> m.tags.includes(tag));
+      if(inGroup.length===0) return;
+      const title = document.createElement('div');
+      title.className = 'bank-group-title';
+      title.textContent = tag;
+      list.appendChild(title);
+      renderPillGroup(list, inGroup);
+    });
+    const rest = meals.filter(m=> !groupTags.some(t=> m.tags.includes(t)));
+    if(rest.length){
+      const title = document.createElement('div');
+      title.className = 'bank-group-title';
+      title.textContent = 'other';
+      list.appendChild(title);
+      renderPillGroup(list, rest);
+    }
+  }
+}
+
+function renderBankView(){
+  const bankView = document.getElementById('bankView');
+  bankView.innerHTML = `
+    <div class="bank-controls" id="bankControls"></div>
+    <div id="bankList"></div>
+  `;
+  renderBankControls();
+  renderBankList();
+}
+
+/* ───────────────────────── View switcher ───────────────────────── */
+let currentView = 'rota';
+function setView(v){
+  currentView = v;
+  document.querySelectorAll('.view-btn').forEach(b=> b.classList.toggle('active', b.dataset.view===v));
+  document.getElementById('mainGrid').style.display = v==='rota' ? '' : 'none';
+  document.getElementById('bankView').style.display = v==='bank' ? '' : 'none';
+  if(v==='bank') renderBankView();
+}
+document.querySelectorAll('.view-btn').forEach(b=>{
+  b.onclick = ()=> setView(b.dataset.view);
+});
+
 /* ───────────────────────── Boot ───────────────────────── */
 function renderAll(){ renderHeader(); renderGrid(); }
-document.getElementById('versionTag').textContent = `v${APP_VERSION}`;
+document.getElementById('versionBadge').textContent = `v${APP_VERSION}`;
 document.title = `Meal Rota v${APP_VERSION}`;
 renderAll();
 

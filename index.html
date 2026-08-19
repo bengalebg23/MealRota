@@ -28,6 +28,12 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.6.0 — added a free-text field to the meal-picker sheet (opened by tapping a
+           slot in "This week"), so any meal can be typed and assigned directly
+           without first existing in UNIFIED_MEALS. Doesn't add it to the meal
+           bank itself, just fills that one slot — still worth manually adding
+           genuinely new regulars to UNIFIED_MEALS so they're filterable/browsable
+           later.
   v1.5.1 — removed the "edit" button from History entries to save space; the
            whole row is now tappable. Tapping a row (or the log card once it's
            loaded for editing) gets a yellow/mustard highlight border so it's
@@ -112,7 +118,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.5.1</title>
+<title>Meal Rota v1.6.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -268,6 +274,15 @@
   .sheet-title{font-family:'Fraunces',serif; font-weight:600; font-size:18px;}
   .sheet-close{background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px;}
   .chip-row{display:flex; gap:6px; overflow-x:auto; padding-bottom:10px; margin-bottom:8px; border-bottom:1px solid var(--line);}
+  .sheet-freetext-row{display:flex; gap:8px; margin-bottom:12px;}
+  .sheet-freetext-input{
+    flex:1; background:var(--surface-2); border:1px solid var(--line); border-radius:9px;
+    color:var(--paper); font-family:'Inter',sans-serif; font-size:13.5px; padding:9px 10px;
+  }
+  .sheet-freetext-btn{
+    flex:none; background:var(--mustard); color:#1c1509; border:none; border-radius:9px;
+    padding:0 16px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
+  }
   .chip{
     flex:none; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 11px;
     border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
@@ -417,6 +432,10 @@
       <div class="sheet-title display" id="sheetTitle">Pick a meal</div>
       <button class="sheet-close" id="sheetClose">✕</button>
     </div>
+    <div class="sheet-freetext-row">
+      <input type="text" class="sheet-freetext-input" id="sheetFreeText" placeholder="type any meal not in the bank...">
+      <button class="sheet-freetext-btn" id="sheetFreeTextBtn">use</button>
+    </div>
     <div class="chip-row" id="chipRow"></div>
     <div class="clear-row" id="clearRow">— clear this slot —</div>
     <div class="meal-list" id="mealList"></div>
@@ -424,7 +443,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.6.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -728,6 +747,7 @@ function openSheet(dayKey, slot, who){
   const dayLabel = DAYS.find(d=>d.key===dayKey).label;
   document.getElementById('sheetTitle').textContent =
     `${dayLabel} ${slot==='lunch'?'lunch':'tea'} — ${who==='family'?'everyone':'adults'}`;
+  document.getElementById('sheetFreeText').value = '';
   renderChips();
   renderMealList();
   document.getElementById('sheetBackdrop').classList.add('open');
@@ -739,6 +759,20 @@ function closeSheet(){
 document.getElementById('sheetClose').onclick = closeSheet;
 document.getElementById('sheetBackdrop').addEventListener('click', e=>{
   if(e.target.id==='sheetBackdrop') closeSheet();
+});
+function useFreeTextMeal(){
+  if(!sheetTarget) return;
+  const val = document.getElementById('sheetFreeText').value.trim();
+  if(!val) return;
+  const {week, day, slot, who} = sheetTarget;
+  template[week][day][slot][who] = val;
+  saveTemplate(template);
+  closeSheet();
+  renderAll();
+}
+document.getElementById('sheetFreeTextBtn').onclick = useFreeTextMeal;
+document.getElementById('sheetFreeText').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') useFreeTextMeal();
 });
 document.getElementById('clearRow').onclick = ()=>{
   if(!sheetTarget) return;

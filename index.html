@@ -28,6 +28,10 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.5.1 — removed the "edit" button from History entries to save space; the
+           whole row is now tappable. Tapping a row (or the log card once it's
+           loaded for editing) gets a yellow/mustard highlight border so it's
+           visually clear which entry you're editing.
   v1.5.0 — History tab: Tea split into separate "adults" and "kids" fields
            (assumption: this applied to the History log, since that's what was
            in focus — Lunch left as a single field). Old {lunch, tea} entries
@@ -108,7 +112,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.5.0</title>
+<title>Meal Rota v1.5.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -331,6 +335,7 @@
   .history-log-card{
     background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
     padding:14px; margin:14px 4px 18px;
+    transition:border-color .15s, box-shadow .15s;
   }
   .history-log-title{font-family:'Fraunces',serif; font-weight:600; font-size:15px; margin-bottom:10px;}
   .history-date-row{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
@@ -356,14 +361,19 @@
     background:var(--surface); border:1px solid var(--line); border-radius:10px;
     padding:8px 10px; margin:0 4px 6px;
     display:flex; align-items:center; gap:8px; overflow-x:auto; white-space:nowrap;
+    cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s;
+  }
+  .history-entry.editing{
+    border-color:var(--mustard); box-shadow:0 0 0 2px var(--mustard-dim);
+    background:var(--surface-2);
   }
   .history-entry-day{font-family:'Fraunces',serif; font-weight:600; font-size:13px; flex:none;}
   .history-entry-date{font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); flex:none;}
   .history-entry-meals{font-size:12px; color:var(--paper-dim); flex:1;}
   .history-entry-meals b{color:var(--paper); font-weight:600;}
-  .history-entry-edit{
-    flex:none; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted);
-    background:none; border:1px solid var(--line); border-radius:6px; padding:3px 7px; cursor:pointer;
+  .history-log-card.editing{
+    border-color:var(--mustard); box-shadow:0 0 0 2px var(--mustard-dim);
+    transition:border-color .15s, box-shadow .15s;
   }
 
 </style>
@@ -414,7 +424,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.5.1";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -969,7 +979,7 @@ function renderHistoryView(){
   const existing = history[editDate] || {lunch:'', teaAdults:'', teaKids:''};
 
   view.innerHTML = `
-    <div class="history-log-card">
+    <div class="history-log-card${historyEditDate ? ' editing' : ''}">
       <div class="history-log-title display">Log what you actually ate</div>
       <div class="history-date-row">
         <input type="date" class="history-date-input" id="histDate" value="${editDate}">
@@ -1046,16 +1056,15 @@ function renderHistoryList(){
       entry.teaKids ? `<b>TK</b> ${escapeHtml(entry.teaKids)}` : '',
     ].filter(Boolean).join('  ·  ');
     return `
-      <div class="history-entry">
+      <div class="history-entry${d===historyEditDate ? ' editing' : ''}" data-date="${d}">
         <span class="history-entry-day">${SHORT_DAY[dayKey]}</span>
         <span class="history-entry-date">${dateLabel}</span>
         <span class="history-entry-meals">${meals}</span>
-        <button class="history-entry-edit" data-date="${d}">edit</button>
       </div>
     `;
   }).join('');
-  list.querySelectorAll('.history-entry-edit').forEach(btn=>{
-    btn.onclick = ()=>{ historyEditDate = btn.dataset.date; renderHistoryView(); window.scrollTo({top:0, behavior:'smooth'}); };
+  list.querySelectorAll('.history-entry').forEach(row=>{
+    row.onclick = ()=>{ historyEditDate = row.dataset.date; renderHistoryView(); window.scrollTo({top:0, behavior:'smooth'}); };
   });
 }
 

@@ -28,6 +28,12 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.5.0 — History tab: Tea split into separate "adults" and "kids" fields
+           (assumption: this applied to the History log, since that's what was
+           in focus — Lunch left as a single field). Old {lunch, tea} entries
+           auto-migrate to {lunch, teaAdults, teaKids} on load. Entries are now
+           a single flex row (day, date, meals, edit button all inline,
+           horizontally scrollable if long) instead of two stacked rows.
   v1.4.1 — History tab fixes: entry edit button was getting visually covered by
            the next entry (unclosed float bug), fixed with a proper flex header;
            logged meals now on one compact line (L / T shorthand) instead of two
@@ -102,7 +108,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.4.1</title>
+<title>Meal Rota v1.5.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -347,17 +353,17 @@
     border-radius:9px; padding:10px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:13.5px; cursor:pointer;
   }
   .history-entry{
-    background:var(--surface); border:1px solid var(--line); border-radius:12px;
-    padding:10px 13px; margin:0 4px 8px;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:8px 10px; margin:0 4px 6px;
+    display:flex; align-items:center; gap:8px; overflow-x:auto; white-space:nowrap;
   }
-  .history-entry-head{display:flex; align-items:baseline; justify-content:space-between; gap:8px;}
-  .history-entry-day{font-family:'Fraunces',serif; font-weight:600; font-size:14px;}
-  .history-entry-date{font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted); margin-left:6px;}
-  .history-entry-meals{font-size:12.5px; color:var(--paper-dim); margin-top:4px; white-space:nowrap; overflow-x:auto;}
+  .history-entry-day{font-family:'Fraunces',serif; font-weight:600; font-size:13px; flex:none;}
+  .history-entry-date{font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); flex:none;}
+  .history-entry-meals{font-size:12px; color:var(--paper-dim); flex:1;}
   .history-entry-meals b{color:var(--paper); font-weight:600;}
   .history-entry-edit{
-    flex:none; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted);
-    background:none; border:1px solid var(--line); border-radius:6px; padding:3px 8px; cursor:pointer;
+    flex:none; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted);
+    background:none; border:1px solid var(--line); border-radius:6px; padding:3px 7px; cursor:pointer;
   }
 
 </style>
@@ -408,7 +414,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.5.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -926,8 +932,22 @@ function renderBankView(){
 const HISTORY_KEY = "mealrota_history_v1";
 
 function loadHistory(){
-  try{ const raw = localStorage.getItem(HISTORY_KEY); if(raw) return JSON.parse(raw); }catch(e){}
-  return {}; // { 'YYYY-MM-DD': {lunch:'', tea:''} }
+  try{
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if(raw){
+      const h = JSON.parse(raw);
+      // migrate old {lunch, tea} entries to {lunch, teaAdults, teaKids}
+      Object.keys(h).forEach(d=>{
+        if(h[d].tea !== undefined && h[d].teaAdults === undefined && h[d].teaKids === undefined){
+          h[d].teaAdults = h[d].tea;
+          h[d].teaKids = '';
+          delete h[d].tea;
+        }
+      });
+      return h;
+    }
+  }catch(e){}
+  return {}; // { 'YYYY-MM-DD': {lunch:'', teaAdults:'', teaKids:''} }
 }
 function saveHistory(h){ try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }catch(e){} }
 let history = loadHistory();
@@ -946,7 +966,7 @@ function dayKeyForDateStr(dateStr){
 function renderHistoryView(){
   const view = document.getElementById('historyView');
   const editDate = historyEditDate || todayStr();
-  const existing = history[editDate] || {lunch:'', tea:''};
+  const existing = history[editDate] || {lunch:'', teaAdults:'', teaKids:''};
 
   view.innerHTML = `
     <div class="history-log-card">
@@ -956,8 +976,10 @@ function renderHistoryView(){
       </div>
       <div class="history-field-label">Lunch</div>
       <input type="text" class="history-text-input" id="histLunch" placeholder="e.g. leftover pasta" value="${escapeHtml(existing.lunch||'')}">
-      <div class="history-field-label">Tea</div>
-      <input type="text" class="history-text-input" id="histTea" placeholder="e.g. sausage pasta" value="${escapeHtml(existing.tea||'')}">
+      <div class="history-field-label">Tea — adults</div>
+      <input type="text" class="history-text-input" id="histTeaAdults" placeholder="e.g. salmon teriyaki" value="${escapeHtml(existing.teaAdults||'')}">
+      <div class="history-field-label">Tea — kids</div>
+      <input type="text" class="history-text-input" id="histTeaKids" placeholder="e.g. fish fingers" value="${escapeHtml(existing.teaKids||'')}">
       <button class="history-prefill-btn" id="histPrefill">↺ prefill from that day's plan</button>
       <button class="history-save-btn" id="histSave">Save this day</button>
     </div>
@@ -975,13 +997,15 @@ function renderHistoryView(){
     const {weekKey, dayKey} = weekAndDayForDate(d);
     const day = template[weekKey][dayKey];
     document.getElementById('histLunch').value = day.lunch.adults || day.lunch.family || '';
-    document.getElementById('histTea').value = day.tea.adults || day.tea.family || '';
+    document.getElementById('histTeaAdults').value = day.tea.adults || day.tea.family || '';
+    document.getElementById('histTeaKids').value = day.tea.family || '';
   };
   document.getElementById('histSave').onclick = ()=>{
     const d = document.getElementById('histDate').value;
     const lunch = document.getElementById('histLunch').value.trim();
-    const tea = document.getElementById('histTea').value.trim();
-    if(!lunch && !tea){ delete history[d]; } else { history[d] = {lunch, tea}; }
+    const teaAdults = document.getElementById('histTeaAdults').value.trim();
+    const teaKids = document.getElementById('histTeaKids').value.trim();
+    if(!lunch && !teaAdults && !teaKids){ delete history[d]; } else { history[d] = {lunch, teaAdults, teaKids}; }
     saveHistory(history);
     historyEditDate = null;
     renderHistoryView();
@@ -1018,15 +1042,15 @@ function renderHistoryList(){
     const dateLabel = dObj.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
     const meals = [
       entry.lunch ? `<b>L</b> ${escapeHtml(entry.lunch)}` : '',
-      entry.tea ? `<b>T</b> ${escapeHtml(entry.tea)}` : '',
+      entry.teaAdults ? `<b>TA</b> ${escapeHtml(entry.teaAdults)}` : '',
+      entry.teaKids ? `<b>TK</b> ${escapeHtml(entry.teaKids)}` : '',
     ].filter(Boolean).join('  ·  ');
     return `
       <div class="history-entry">
-        <div class="history-entry-head">
-          <span><span class="history-entry-day">${SHORT_DAY[dayKey]}</span><span class="history-entry-date">${dateLabel}</span></span>
-          <button class="history-entry-edit" data-date="${d}">edit</button>
-        </div>
-        <div class="history-entry-meals">${meals}</div>
+        <span class="history-entry-day">${SHORT_DAY[dayKey]}</span>
+        <span class="history-entry-date">${dateLabel}</span>
+        <span class="history-entry-meals">${meals}</span>
+        <button class="history-entry-edit" data-date="${d}">edit</button>
       </div>
     `;
   }).join('');

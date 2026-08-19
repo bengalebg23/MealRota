@@ -28,6 +28,13 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.4.1 — History tab fixes: entry edit button was getting visually covered by
+           the next entry (unclosed float bug), fixed with a proper flex header;
+           logged meals now on one compact line (L / T shorthand) instead of two
+           rows; entries lead with weekday (Mon/Tue/etc) instead of the date, with
+           the date shown small and secondary; added a filter-by-day chip row so
+           e.g. all logged Mondays can be viewed together. Push notification setup
+           paused at Ben's request — Firebase project name/config not yet supplied.
   v1.4.0 — added a History tab: log what was actually eaten per calendar date
            (lunch + tea, free text), with a "prefill from that day's plan" shortcut
            and a reverse-chronological list of past logged days, tap to edit.
@@ -95,7 +102,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.4.0</title>
+<title>Meal Rota v1.4.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -341,14 +348,16 @@
   }
   .history-entry{
     background:var(--surface); border:1px solid var(--line); border-radius:12px;
-    padding:11px 13px; margin:0 4px 8px;
+    padding:10px 13px; margin:0 4px 8px;
   }
-  .history-entry-date{font-family:'Fraunces',serif; font-weight:600; font-size:14px; margin-bottom:4px;}
-  .history-entry-row{font-size:13px; color:var(--paper-dim); margin-top:2px;}
-  .history-entry-row b{color:var(--paper); font-weight:600;}
+  .history-entry-head{display:flex; align-items:baseline; justify-content:space-between; gap:8px;}
+  .history-entry-day{font-family:'Fraunces',serif; font-weight:600; font-size:14px;}
+  .history-entry-date{font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted); margin-left:6px;}
+  .history-entry-meals{font-size:12.5px; color:var(--paper-dim); margin-top:4px; white-space:nowrap; overflow-x:auto;}
+  .history-entry-meals b{color:var(--paper); font-weight:600;}
   .history-entry-edit{
-    font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted);
-    background:none; border:none; cursor:pointer; float:right;
+    flex:none; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted);
+    background:none; border:1px solid var(--line); border-radius:6px; padding:3px 8px; cursor:pointer;
   }
 
 </style>
@@ -399,7 +408,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -923,8 +932,16 @@ function loadHistory(){
 function saveHistory(h){ try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }catch(e){} }
 let history = loadHistory();
 let historyEditDate = null; // date currently loaded into the log form
+let historyDayFilter = null; // e.g. 'mon' or null for all
+
+const SHORT_DAY = {mon:"Mon", tue:"Tue", wed:"Wed", thu:"Thu", fri:"Fri", sat:"Sat", sun:"Sun"};
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function dayKeyForDateStr(dateStr){
+  const dObj = new Date(dateStr+"T00:00:00");
+  const g = dObj.getDay(); // 0 Sun..6 Sat
+  return DAYS[g===0?6:g-1].key;
+}
 
 function renderHistoryView(){
   const view = document.getElementById('historyView');
@@ -943,6 +960,10 @@ function renderHistoryView(){
       <input type="text" class="history-text-input" id="histTea" placeholder="e.g. sausage pasta" value="${escapeHtml(existing.tea||'')}">
       <button class="history-prefill-btn" id="histPrefill">↺ prefill from that day's plan</button>
       <button class="history-save-btn" id="histSave">Save this day</button>
+    </div>
+    <div class="bank-filter-group" style="padding:0 4px;">
+      <div class="bank-filter-label">Filter by day</div>
+      <div class="bank-chip-row" id="historyDayChips"></div>
     </div>
     <div class="section-label">Past days</div>
     <div id="historyList"></div>
@@ -966,12 +987,26 @@ function renderHistoryView(){
     renderHistoryView();
   };
 
+  renderHistoryDayChips();
   renderHistoryList();
+}
+
+function renderHistoryDayChips(){
+  const row = document.getElementById('historyDayChips');
+  row.innerHTML = '';
+  [{key:null,label:'all'}, ...DAYS.map(d=>({key:d.key, label:SHORT_DAY[d.key]}))].forEach(opt=>{
+    const chip = document.createElement('div');
+    chip.className = 'bank-chip' + (historyDayFilter===opt.key ? ' active':'');
+    chip.textContent = opt.label;
+    chip.onclick = ()=>{ historyDayFilter = opt.key; renderHistoryDayChips(); renderHistoryList(); };
+    row.appendChild(chip);
+  });
 }
 
 function renderHistoryList(){
   const list = document.getElementById('historyList');
-  const dates = Object.keys(history).sort().reverse();
+  let dates = Object.keys(history).sort().reverse();
+  if(historyDayFilter) dates = dates.filter(d=> dayKeyForDateStr(d)===historyDayFilter);
   if(dates.length===0){
     list.innerHTML = `<div class="bank-empty">No days logged yet.</div>`;
     return;
@@ -979,13 +1014,19 @@ function renderHistoryList(){
   list.innerHTML = dates.map(d=>{
     const entry = history[d];
     const dObj = new Date(d+"T00:00:00");
-    const label = dObj.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+    const dayKey = dayKeyForDateStr(d);
+    const dateLabel = dObj.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+    const meals = [
+      entry.lunch ? `<b>L</b> ${escapeHtml(entry.lunch)}` : '',
+      entry.tea ? `<b>T</b> ${escapeHtml(entry.tea)}` : '',
+    ].filter(Boolean).join('  ·  ');
     return `
       <div class="history-entry">
-        <button class="history-entry-edit" data-date="${d}">edit</button>
-        <div class="history-entry-date">${label}</div>
-        ${entry.lunch ? `<div class="history-entry-row"><b>Lunch</b> — ${escapeHtml(entry.lunch)}</div>` : ''}
-        ${entry.tea ? `<div class="history-entry-row"><b>Tea</b> — ${escapeHtml(entry.tea)}</div>` : ''}
+        <div class="history-entry-head">
+          <span><span class="history-entry-day">${SHORT_DAY[dayKey]}</span><span class="history-entry-date">${dateLabel}</span></span>
+          <button class="history-entry-edit" data-date="${d}">edit</button>
+        </div>
+        <div class="history-entry-meals">${meals}</div>
       </div>
     `;
   }).join('');

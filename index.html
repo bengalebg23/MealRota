@@ -28,6 +28,9 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.7.3 — removed the redundant "Week A" label above the day list in "This
+           week" — the active week tab already shows this, so it was wasting
+           a row of vertical space for no new information.
   v1.7.2 — reverted filter/sort chips back to their original smaller size (only
            kept the wrap-instead-of-scroll fix, not the bigger sizing from
            v1.6.1 — that was the wrong fix). Compacted the whole "This week"
@@ -141,7 +144,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.7.2</title>
+<title>Meal Rota v1.7.3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -479,7 +482,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.7.2";
+const APP_VERSION = "1.7.3";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -706,10 +709,6 @@ function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;'
 function renderGrid(){
   const main = document.getElementById('mainGrid');
   main.innerHTML = '';
-  const label = document.createElement('div');
-  label.className = 'section-label';
-  label.textContent = `Week ${activeWeek}`;
-  main.appendChild(label);
 
   DAYS.forEach(d=>{
     const day = template[activeWeek][d.key];

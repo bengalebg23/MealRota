@@ -28,6 +28,12 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v1.7.2 — reverted filter/sort chips back to their original smaller size (only
+           kept the wrap-instead-of-scroll fix, not the bigger sizing from
+           v1.6.1 — that was the wrong fix). Compacted the whole "This week"
+           view: smaller header/dial/day-cards/pills/spacing throughout, so
+           more days are visible on screen at once (previously only Mon–Wed
+           fit on a typical phone screen).
   v1.7.1 — the meal-picker sheet's filter chips (quick/medium/slow/chicken/etc,
            shown when tapping a slot in "This week") were still getting clipped
            at the screen edge on horizontal scroll — same issue v1.7.0 fixed for
@@ -135,7 +141,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.7.1</title>
+<title>Meal Rota v1.7.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -177,7 +183,7 @@
   .mono{font-family:'IBM Plex Mono',monospace;}
 
   header.top{
-    padding:22px 18px 14px;
+    padding:14px 18px 10px;
     border-bottom:1px solid var(--line);
     position:sticky; top:0; z-index:20;
     background:linear-gradient(180deg, var(--bg) 80%, transparent);
@@ -185,83 +191,83 @@
   }
   .eyebrow{
     font-family:'IBM Plex Mono',monospace;
-    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
-    color:var(--muted); margin:0 0 4px;
+    font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 2px;
   }
   h1.title{
-    font-size:26px; font-weight:600; margin:0; letter-spacing:-.01em;
+    font-size:21px; font-weight:600; margin:0; letter-spacing:-.01em;
   }
   .title-row{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    margin:0 0 14px;
+    margin:0 0 9px;
   }
   .version-badge{
-    flex:none; font-size:12px; font-weight:600; color:var(--mustard);
+    flex:none; font-size:11px; font-weight:600; color:var(--mustard);
     background:var(--surface); border:1px solid var(--mustard-dim);
-    padding:5px 10px; border-radius:20px;
+    padding:4px 9px; border-radius:20px;
   }
 
   /* ── Rota dial: the signature element ── */
-  .dial-row{display:flex; align-items:center; gap:14px;}
+  .dial-row{display:flex; align-items:center; gap:10px;}
   .dial{
-    position:relative; width:52px; height:52px; flex:none;
+    position:relative; width:40px; height:40px; flex:none;
   }
   .dial svg{width:100%; height:100%; display:block;}
   .dial .now-label{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-family:'Fraunces',serif; font-weight:600; font-size:16px; color:var(--mustard);
+    font-family:'Fraunces',serif; font-weight:600; font-size:13px; color:var(--mustard);
   }
-  .weeks-tabs{display:flex; gap:6px; flex:1;}
+  .weeks-tabs{display:flex; gap:5px; flex:1;}
   .wk-tab{
-    flex:1; text-align:center; padding:9px 0 8px; border-radius:10px;
+    flex:1; text-align:center; padding:6px 0 5px; border-radius:9px;
     background:var(--surface); border:1px solid var(--line);
-    font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;
+    font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600;
     color:var(--paper-dim); cursor:pointer; position:relative;
     transition:background .15s, color .15s, border-color .15s;
   }
-  .wk-tab .wk-sub{display:block; font-family:'Inter',sans-serif; font-size:9px; font-weight:500; letter-spacing:.06em; margin-top:2px; opacity:.7; text-transform:uppercase;}
+  .wk-tab .wk-sub{display:block; font-family:'Inter',sans-serif; font-size:8px; font-weight:500; letter-spacing:.06em; margin-top:1px; opacity:.7; text-transform:uppercase;}
   .wk-tab.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
   .wk-tab.is-now::after{
-    content:"today"; position:absolute; top:-9px; right:6px;
-    font-family:'Inter',sans-serif; font-size:8px; letter-spacing:.08em; text-transform:uppercase;
-    background:var(--rose); color:#2a1512; padding:2px 5px; border-radius:5px; font-weight:700;
+    content:"today"; position:absolute; top:-8px; right:6px;
+    font-family:'Inter',sans-serif; font-size:7px; letter-spacing:.08em; text-transform:uppercase;
+    background:var(--rose); color:#2a1512; padding:1px 4px; border-radius:5px; font-weight:700;
   }
 
-  main{padding:16px 14px 0;}
+  main{padding:10px 12px 0;}
 
   .day-card{
     background:var(--surface);
     border:1px solid var(--line);
-    border-radius:var(--radius);
-    margin-bottom:10px;
+    border-radius:11px;
+    margin-bottom:6px;
     overflow:hidden;
   }
   .day-head{
     display:flex; align-items:center; justify-content:space-between;
-    padding:10px 10px 8px 14px;
+    padding:6px 8px 4px 11px;
   }
-  .day-name{font-family:'Fraunces',serif; font-weight:600; font-size:17px;}
-  .day-head-right{display:flex; align-items:center; gap:8px;}
-  .day-note{font-size:10.5px; color:var(--muted); font-family:'IBM Plex Mono',monospace;}
+  .day-name{font-family:'Fraunces',serif; font-weight:600; font-size:14px;}
+  .day-head-right{display:flex; align-items:center; gap:6px;}
+  .day-note{font-size:9px; color:var(--muted); font-family:'IBM Plex Mono',monospace;}
   .adults-toggle{
-    flex:none; width:24px; height:24px; border-radius:50%;
+    flex:none; width:19px; height:19px; border-radius:50%;
     border:1px solid var(--rose-dim); background:none; color:var(--rose);
-    font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
     padding:0;
   }
   .adults-toggle.open{background:var(--rose); color:#2a1512; border-color:var(--rose);}
   .slots{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line);}
-  .slot{background:var(--surface); padding:10px 12px 12px;}
+  .slot{background:var(--surface); padding:5px 8px 6px;}
   .slot-label{
-    font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--muted); margin-bottom:6px; display:block;
+    font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:3px; display:block;
   }
   .meal-pill{
     display:block; width:100%; text-align:left;
-    background:var(--surface-2); border:1px solid var(--line); border-radius:9px;
-    color:var(--paper); font-family:'Inter',sans-serif; font-size:13.5px; font-weight:500;
-    padding:9px 10px; margin-bottom:6px; cursor:pointer; min-height:38px;
-    display:flex; align-items:center; line-height:1.25;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--paper); font-family:'Inter',sans-serif; font-size:12px; font-weight:500;
+    padding:6px 8px; margin-bottom:3px; cursor:pointer; min-height:28px;
+    display:flex; align-items:center; line-height:1.2;
   }
   .meal-pill.empty{color:var(--muted); font-style:italic; font-weight:400;}
   .meal-pill.family{border-left:3px solid var(--mustard);}
@@ -269,7 +275,7 @@
 
   .section-label{
     font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
-    color:var(--muted); margin:22px 4px 8px;
+    color:var(--muted); margin:12px 4px 6px;
   }
 
   /* ── Meal bank sheet ── */
@@ -290,10 +296,10 @@
   .sheet-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
   .sheet-title{font-family:'Fraunces',serif; font-weight:600; font-size:18px;}
   .sheet-close{background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px;}
-  .chip-row{display:flex; flex-wrap:wrap; gap:8px; padding-bottom:10px; margin-bottom:8px; border-bottom:1px solid var(--line);}
+  .chip-row{display:flex; flex-wrap:wrap; gap:6px; padding-bottom:10px; margin-bottom:8px; border-bottom:1px solid var(--line);}
   .chip{
-    flex:none; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; padding:8px 14px;
-    border-radius:20px; border:1.5px solid var(--line); background:var(--surface-2); color:var(--paper);
+    flex:none; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 11px;
+    border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
     cursor:pointer; white-space:nowrap;
   }
   .chip.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
@@ -317,14 +323,14 @@
 
   .footer-note{
     text-align:center; color:var(--muted); font-size:11px; font-family:'IBM Plex Mono',monospace;
-    padding:20px 20px 6px; line-height:1.6;
+    padding:12px 20px 6px; line-height:1.5;
   }
 
   /* ── View switcher ── */
-  .view-switch{display:flex; gap:6px; margin-top:12px; background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:3px;}
+  .view-switch{display:flex; gap:6px; margin-top:8px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:3px;}
   .view-btn{
-    flex:1; background:none; border:none; padding:8px 0; border-radius:8px;
-    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600; color:var(--paper-dim);
+    flex:1; background:none; border:none; padding:6px 0; border-radius:7px;
+    font-family:'Inter',sans-serif; font-size:12px; font-weight:600; color:var(--paper-dim);
     cursor:pointer;
   }
   .view-btn.active{background:var(--mustard); color:#1c1509;}
@@ -344,21 +350,21 @@
     padding:0 16px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
   }
   .bank-controls{padding:14px 4px 4px;}
-  .bank-filter-group{margin-bottom:14px;}
-  .bank-filter-label{font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--paper-dim); margin:0 0 8px 4px;}
-  .bank-chip-row{display:flex; flex-wrap:wrap; gap:8px;}
+  .bank-filter-group{margin-bottom:10px;}
+  .bank-filter-label{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:0 0 6px 4px;}
+  .bank-chip-row{display:flex; flex-wrap:wrap; gap:6px;}
   .bank-chip{
-    flex:none; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; padding:9px 16px;
-    border-radius:20px; border:1.5px solid var(--line); background:var(--surface-2); color:var(--paper);
+    flex:none; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 12px;
+    border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
     cursor:pointer; white-space:nowrap;
   }
   .bank-chip.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
-  .bank-sort-row{display:flex; gap:8px; margin-top:2px;}
+  .bank-sort-row{display:flex; gap:6px; margin-top:2px;}
   .bank-sort-btn{
-    flex:1; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:9px 0;
-    border-radius:9px; border:1.5px solid var(--line); background:var(--surface-2); color:var(--paper); cursor:pointer;
+    flex:1; font-family:'Inter',sans-serif; font-size:11.5px; font-weight:500; padding:7px 0;
+    border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim); cursor:pointer;
   }
-  .bank-sort-btn.active{background:var(--surface-2); color:var(--paper); border-color:var(--mustard); border-width:2px;}
+  .bank-sort-btn.active{background:var(--surface-2); color:var(--paper); border-color:var(--mustard);}
 
   .bank-group-title{
     font-family:'Fraunces',serif; font-weight:600; font-size:14px; color:var(--paper-dim);
@@ -473,7 +479,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.7.1";
+const APP_VERSION = "1.7.2";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},

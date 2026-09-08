@@ -28,6 +28,15 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.4.0 — meal tags are now editable after the fact. Tapping a pill in the
+           Meal Bank opens an inline editor with toggle chips for When
+           (lunch/tea, multi-select), Who (everyone/adults/kids, multi-select),
+           Protein and Speed (single-select each), plus a Save button. Custom
+           meals update their tags directly; built-in UNIFIED_MEALS meals go
+           through a new tagOverrides map (localStorage) applied on top of the
+           hardcoded array on every load, since UNIFIED_MEALS itself resets on
+           reload — this is the pattern to reuse for any future "edit a
+           built-in constant" feature in this app.
   v2.3.0 — Meal Bank's "When" filter is now Lunch / Adult Tea / Kid Tea (was
            just Lunch/Tea). "Adult Tea" shows meals tagged adults or everyone;
            "Kid Tea" shows meals tagged kids or everyone — "everyone" meals
@@ -175,7 +184,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.3.0</title>
+<title>Meal Rota v2.4.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -434,6 +443,27 @@
   }
   .bank-empty{color:var(--muted); font-size:13px; padding:20px 8px; text-align:center;}
 
+  .tag-editor{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:10px 10px 6px; margin:4px 0 2px;
+  }
+  .tag-editor-group{margin-bottom:8px;}
+  .tag-editor-label{
+    font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 5px 2px;
+  }
+  .tag-editor-row{display:flex; flex-wrap:wrap; gap:5px;}
+  .tag-editor-chip{
+    font-family:'Inter',sans-serif; font-size:11px; font-weight:500; padding:5px 10px;
+    border-radius:14px; border:1px solid var(--line); background:var(--surface-2); color:var(--paper-dim);
+    cursor:pointer;
+  }
+  .tag-editor-chip.on{background:var(--mustard); color:#ffffff; border-color:var(--mustard);}
+  .tag-editor-save{
+    width:100%; background:var(--today); color:#ffffff; border:none; border-radius:8px;
+    padding:8px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:12.5px; cursor:pointer; margin-top:2px;
+  }
+
   /* ── History tab ── */
   .history-log-card{
     background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
@@ -536,7 +566,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.4.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -618,6 +648,41 @@ function loadCustomMeals(){
 function saveCustomMeals(m){ try{ localStorage.setItem(CUSTOM_MEALS_KEY, JSON.stringify(m)); }catch(e){} }
 let customMeals = loadCustomMeals();
 function allMeals(){ return UNIFIED_MEALS.concat(customMeals); }
+
+// edited tags for built-in UNIFIED_MEALS meals (can't be edited in place since
+// UNIFIED_MEALS is redefined fresh from the hardcoded array on every load) —
+// applied on top of UNIFIED_MEALS right after it's defined, so every other
+// code path can just keep reading m.tags normally, no refactor needed.
+const TAG_OVERRIDES_KEY = "mealrota_tag_overrides_v1";
+function loadTagOverrides(){
+  try{ const raw = localStorage.getItem(TAG_OVERRIDES_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return {}; // { mealName: tags[] }
+}
+function saveTagOverrides(o){ try{ localStorage.setItem(TAG_OVERRIDES_KEY, JSON.stringify(o)); }catch(e){} }
+let tagOverrides = loadTagOverrides();
+(function applyTagOverrides(){
+  Object.keys(tagOverrides).forEach(name=>{
+    const m = UNIFIED_MEALS.find(x=> x.name === name);
+    if(m) m.tags = tagOverrides[name];
+  });
+})();
+
+// edit any meal's tags after the fact — custom meals update in place, built-in
+// meals go through the override map above
+function updateMealTags(name, newTags){
+  const custom = customMeals.find(m=> m.name === name);
+  if(custom){
+    custom.tags = newTags;
+    saveCustomMeals(customMeals);
+    return;
+  }
+  const builtin = UNIFIED_MEALS.find(m=> m.name === name);
+  if(builtin){
+    builtin.tags = newTags;
+    tagOverrides[name] = newTags;
+    saveTagOverrides(tagOverrides);
+  }
+}
 
 /* ───────────────────────── Rota template data ───────────────────────── */
 const DAYS = [
@@ -971,7 +1036,6 @@ let bankProtein = null;   // one of PROTEIN_TAGS or null
 let bankSpeed = null;     // one of SPEED_TAGS or null
 let bankWhen = null;      // "lunch" | "teaAdults" | "teaKids" | null
 let bankSort = "name";    // "name" | "protein" | "speed"
-let bankExpanded = new Set(); // meal names with tags currently shown
 
 function proteinOf(m){ return PROTEIN_TAGS.find(t=> m.tags.includes(t)) || null; }
 function speedOf(m){ return SPEED_TAGS.find(t=> m.tags.includes(t)) || null; }
@@ -1052,6 +1116,72 @@ function renderBankControls(){
   wrap.appendChild(sortGroup);
 }
 
+let bankExpanded = new Set(); // meal names currently showing the tag editor
+let bankTagDraft = {};        // meal name -> draft tags array while editing
+
+const WHEN_TAGS = ["lunch","tea"];
+const WHO_TAGS = ["everyone","adults","kids"];
+
+function buildTagEditor(m){
+  const wrap = document.createElement('div');
+  wrap.className = 'tag-editor';
+  const draft = bankTagDraft[m.name];
+
+  if(m.note){
+    const noteEl = document.createElement('div');
+    noteEl.className = 'bank-pill-tags mono';
+    noteEl.textContent = m.note;
+    noteEl.style.marginBottom = '6px';
+    wrap.appendChild(noteEl);
+  }
+
+  function chipRow(groupLabel, options, multiSelect){
+    const group = document.createElement('div');
+    group.className = 'tag-editor-group';
+    group.innerHTML = `<div class="tag-editor-label">${groupLabel}</div>`;
+    const row = document.createElement('div');
+    row.className = 'tag-editor-row';
+    options.forEach(opt=>{
+      const chip = document.createElement('div');
+      chip.className = 'tag-editor-chip' + (draft.includes(opt) ? ' on' : '');
+      chip.textContent = opt;
+      chip.onclick = ()=>{
+        if(multiSelect){
+          if(draft.includes(opt)) draft.splice(draft.indexOf(opt), 1);
+          else draft.push(opt);
+        } else {
+          // single-select within this option group: clear any other option from
+          // this same group first, then toggle this one
+          options.forEach(o=>{ const i = draft.indexOf(o); if(i>-1) draft.splice(i,1); });
+          if(!chip.classList.contains('on')) draft.push(opt);
+        }
+        renderBankList();
+      };
+      row.appendChild(chip);
+    });
+    group.appendChild(row);
+    return group;
+  }
+
+  wrap.appendChild(chipRow('When', WHEN_TAGS, true));
+  wrap.appendChild(chipRow('Who', WHO_TAGS, true));
+  wrap.appendChild(chipRow('Protein', PROTEIN_TAGS, false));
+  wrap.appendChild(chipRow('Speed', SPEED_TAGS, false));
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'tag-editor-save';
+  saveBtn.textContent = 'Save tags';
+  saveBtn.onclick = ()=>{
+    updateMealTags(m.name, [...draft]);
+    bankExpanded.delete(m.name);
+    delete bankTagDraft[m.name];
+    renderBankList();
+  };
+  wrap.appendChild(saveBtn);
+
+  return wrap;
+}
+
 function renderBankList(){
   const list = document.getElementById('bankList');
   list.innerHTML = '';
@@ -1075,15 +1205,13 @@ function renderBankList(){
       pill.style.borderLeftColor = pillColor(m);
       pill.textContent = m.name;
       pill.onclick = ()=>{
-        if(bankExpanded.has(m.name)) bankExpanded.delete(m.name); else bankExpanded.add(m.name);
+        if(bankExpanded.has(m.name)){ bankExpanded.delete(m.name); delete bankTagDraft[m.name]; }
+        else { bankExpanded.add(m.name); bankTagDraft[m.name] = [...m.tags]; }
         renderBankList();
       };
       pillWrap.appendChild(pill);
       if(bankExpanded.has(m.name)){
-        const tagsEl = document.createElement('div');
-        tagsEl.className = 'bank-pill-tags mono';
-        tagsEl.textContent = m.tags.join(' · ') + (m.note ? ' · ' + m.note : '');
-        pillWrap.appendChild(tagsEl);
+        pillWrap.appendChild(buildTagEditor(m));
       }
     });
     container.appendChild(pillWrap);

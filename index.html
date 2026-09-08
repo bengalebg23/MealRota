@@ -28,6 +28,25 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.1.0 — four changes: (1) shrunk day-name text in "Planned meals" so the
+           whole week fits on one screen; (2) renamed "This week" tab to
+           "Planned meals"; (3) History is now the default landing tab instead
+           of the weekly grid; (4) both free-text meal inputs (the picker
+           sheet's "type any meal not in the bank" and the Meal Bank's "add a
+           meal" box) now show a live dropdown of matching existing meals as
+           you type — picking one in the sheet assigns it directly and closes
+           the sheet, picking one in the Meal Bank just fills the box so you
+           can decide whether to still add it (helps avoid accidental dupes).
+  v2.0.0 — full re-theme to the "Fridge Whiteboard" concept, chosen from 3
+           style options presented (Till Receipt / Diner Menu Board / Fridge
+           Whiteboard — the mockup file was a separate exploratory artifact,
+           not part of this repo). Light background (was dark pine-green),
+           blue for family meals (was mustard gold), orange for adults-separate
+           (was dusty rose), green "today" badge, Patrick Hand handwriting font
+           for headers (was Fraunces serif), Inter body + IBM Plex Mono data
+           unchanged. All colors were already CSS custom properties so this
+           was mostly a :root palette + font-import swap, not a rebuild —
+           worth remembering for any future re-theme.
   v1.7.3 — removed the redundant "Week A" label above the day list in "This
            week" — the active week tab already shows this, so it was wasting
            a row of vertical space for no new information.
@@ -140,34 +159,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#16211f">
+<meta name="theme-color" content="#F7F8FA">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v1.7.3</title>
+<title>Meal Rota v2.1.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#16211f;
-    --surface:#1e2b27;
-    --surface-2:#25342f;
-    --line:#33443d;
-    --paper:#f2ede0;
-    --paper-dim:#c8c2b2;
-    --muted:#8fa39a;
-    --mustard:#d9a441;
-    --mustard-dim:#a87f36;
-    --rose:#c17a6f;
-    --rose-dim:#8f5a52;
-    --c-chicken:#d9a441;
-    --c-beef:#c17a6f;
-    --c-pork:#c48a5c;
-    --c-fish:#6fa8a3;
-    --c-veggie:#7fa691;
-    --c-egg:#cbbf8a;
-    --c-default:#8fa39a;
+    --bg:#F7F8FA;
+    --surface:#FFFFFF;
+    --surface-2:#EEF1F5;
+    --line:#D7DCE3;
+    --paper:#26313F;
+    --paper-dim:#5b6b7d;
+    --muted:#6b7a8c;
+    --mustard:#2F6FE4;
+    --mustard-dim:#1f4fb0;
+    --rose:#F0703C;
+    --rose-dim:#c1541f;
+    --today:#2FA84F;
+    --c-chicken:#E0A23A;
+    --c-beef:#C1443A;
+    --c-pork:#C1854F;
+    --c-fish:#2F8FA8;
+    --c-veggie:#4C9A5D;
+    --c-egg:#B99A2E;
+    --c-default:#8a97a8;
     --radius:14px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -182,7 +202,7 @@
   @media (prefers-reduced-motion: reduce){
     *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
   }
-  .display{font-family:'Fraunces',serif;}
+  .display{font-family:'Patrick Hand',cursive;}
   .mono{font-family:'IBM Plex Mono',monospace;}
 
   header.top{
@@ -198,7 +218,7 @@
     color:var(--muted); margin:0 0 2px;
   }
   h1.title{
-    font-size:21px; font-weight:600; margin:0; letter-spacing:-.01em;
+    font-size:28px; margin:0;
   }
   .title-row{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -218,7 +238,7 @@
   .dial svg{width:100%; height:100%; display:block;}
   .dial .now-label{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-family:'Fraunces',serif; font-weight:600; font-size:13px; color:var(--mustard);
+    font-family:'Patrick Hand',cursive; font-size:15px; color:var(--mustard);
   }
   .weeks-tabs{display:flex; gap:5px; flex:1;}
   .wk-tab{
@@ -229,11 +249,11 @@
     transition:background .15s, color .15s, border-color .15s;
   }
   .wk-tab .wk-sub{display:block; font-family:'Inter',sans-serif; font-size:8px; font-weight:500; letter-spacing:.06em; margin-top:1px; opacity:.7; text-transform:uppercase;}
-  .wk-tab.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
+  .wk-tab.active{background:var(--mustard); color:#ffffff; border-color:var(--mustard);}
   .wk-tab.is-now::after{
     content:"today"; position:absolute; top:-8px; right:6px;
     font-family:'Inter',sans-serif; font-size:7px; letter-spacing:.08em; text-transform:uppercase;
-    background:var(--rose); color:#2a1512; padding:1px 4px; border-radius:5px; font-weight:700;
+    background:var(--today); color:#ffffff; padding:1px 4px; border-radius:5px; font-weight:700;
   }
 
   main{padding:10px 12px 0;}
@@ -249,7 +269,7 @@
     display:flex; align-items:center; justify-content:space-between;
     padding:6px 8px 4px 11px;
   }
-  .day-name{font-family:'Fraunces',serif; font-weight:600; font-size:14px;}
+  .day-name{font-family:'Patrick Hand',cursive; font-size:13px;}
   .day-head-right{display:flex; align-items:center; gap:6px;}
   .day-note{font-size:9px; color:var(--muted); font-family:'IBM Plex Mono',monospace;}
   .adults-toggle{
@@ -297,7 +317,7 @@
   @keyframes sheetUp{from{transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;}}
   .sheet-handle{width:36px; height:4px; background:var(--line); border-radius:3px; margin:0 auto 12px;}
   .sheet-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
-  .sheet-title{font-family:'Fraunces',serif; font-weight:600; font-size:18px;}
+  .sheet-title{font-family:'Patrick Hand',cursive; font-size:21px;}
   .sheet-close{background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px;}
   .chip-row{display:flex; flex-wrap:wrap; gap:6px; padding-bottom:10px; margin-bottom:8px; border-bottom:1px solid var(--line);}
   .chip{
@@ -305,15 +325,27 @@
     border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
     cursor:pointer; white-space:nowrap;
   }
-  .chip.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
+  .chip.active{background:var(--mustard); color:#ffffff; border-color:var(--mustard);}
   .sheet-freetext-row{display:flex; gap:8px; margin-bottom:12px;}
   .sheet-freetext-input{
     flex:1; background:var(--surface-2); border:1px solid var(--line); border-radius:9px;
     color:var(--paper); font-family:'Inter',sans-serif; font-size:13.5px; padding:9px 10px;
   }
   .sheet-freetext-btn{
-    flex:none; background:var(--mustard); color:#1c1509; border:none; border-radius:9px;
+    flex:none; background:var(--mustard); color:#ffffff; border:none; border-radius:9px;
     padding:0 16px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
+  }
+  .freetext-suggestions{
+    display:none; flex-direction:column; gap:4px; margin:-4px 0 10px;
+  }
+  .freetext-suggestions.open{display:flex;}
+  .freetext-suggestion{
+    text-align:left; background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; font-family:'Inter',sans-serif; font-size:13px; color:var(--paper);
+    cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:8px;
+  }
+  .freetext-suggestion .freetext-suggestion-tags{
+    font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); flex:none;
   }
   .meal-list{overflow-y:auto; flex:1;}
   .meal-row{
@@ -336,7 +368,7 @@
     font-family:'Inter',sans-serif; font-size:12px; font-weight:600; color:var(--paper-dim);
     cursor:pointer;
   }
-  .view-btn.active{background:var(--mustard); color:#1c1509;}
+  .view-btn.active{background:var(--mustard); color:#ffffff;}
 
   /* ── Meal bank browse ── */
   .bank-add-card{
@@ -349,7 +381,7 @@
     color:var(--paper); font-family:'Inter',sans-serif; font-size:13.5px; padding:9px 10px;
   }
   .bank-add-btn{
-    flex:none; background:var(--mustard); color:#1c1509; border:none; border-radius:9px;
+    flex:none; background:var(--mustard); color:#ffffff; border:none; border-radius:9px;
     padding:0 16px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
   }
   .bank-controls{padding:14px 4px 4px;}
@@ -361,7 +393,7 @@
     border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--paper-dim);
     cursor:pointer; white-space:nowrap;
   }
-  .bank-chip.active{background:var(--mustard); color:#1c1509; border-color:var(--mustard);}
+  .bank-chip.active{background:var(--mustard); color:#ffffff; border-color:var(--mustard);}
   .bank-sort-row{display:flex; gap:6px; margin-top:2px;}
   .bank-sort-btn{
     flex:1; font-family:'Inter',sans-serif; font-size:11.5px; font-weight:500; padding:7px 0;
@@ -370,7 +402,7 @@
   .bank-sort-btn.active{background:var(--surface-2); color:var(--paper); border-color:var(--mustard);}
 
   .bank-group-title{
-    font-family:'Fraunces',serif; font-weight:600; font-size:14px; color:var(--paper-dim);
+    font-family:'Patrick Hand',cursive; font-size:17px; color:var(--paper-dim);
     margin:16px 4px 8px; text-transform:capitalize;
   }
   .bank-pill-wrap{display:flex; flex-wrap:wrap; gap:7px; padding:0 4px;}
@@ -391,7 +423,7 @@
     padding:14px; margin:14px 4px 18px;
     transition:border-color .15s, box-shadow .15s;
   }
-  .history-log-title{font-family:'Fraunces',serif; font-weight:600; font-size:15px; margin-bottom:10px;}
+  .history-log-title{font-family:'Patrick Hand',cursive; font-size:18px; margin-bottom:10px;}
   .history-date-row{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
   .history-date-input{
     background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
@@ -408,7 +440,7 @@
     padding:5px 9px; cursor:pointer; margin-top:6px;
   }
   .history-save-btn{
-    width:100%; margin-top:12px; background:var(--mustard); color:#1c1509; border:none;
+    width:100%; margin-top:12px; background:var(--mustard); color:#ffffff; border:none;
     border-radius:9px; padding:10px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:13.5px; cursor:pointer;
   }
   .history-entry{
@@ -421,7 +453,7 @@
     border-color:var(--mustard); box-shadow:0 0 0 2px var(--mustard-dim);
     background:var(--surface-2);
   }
-  .history-entry-day{font-family:'Fraunces',serif; font-weight:600; font-size:13px; flex:none;}
+  .history-entry-day{font-family:'Patrick Hand',cursive; font-size:16px; flex:none;}
   .history-entry-date{font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); flex:none;}
   .history-entry-meals{font-size:12px; color:var(--paper-dim); flex:1;}
   .history-entry-meals b{color:var(--paper); font-weight:600;}
@@ -443,8 +475,8 @@
   <div class="dial-row">
     <div class="dial">
       <svg viewBox="0 0 52 52">
-        <circle cx="26" cy="26" r="22" fill="none" stroke="#33443d" stroke-width="4"/>
-        <circle id="dialArc" cx="26" cy="26" r="22" fill="none" stroke="#d9a441" stroke-width="4"
+        <circle cx="26" cy="26" r="22" fill="none" stroke="#D7DCE3" stroke-width="4"/>
+        <circle id="dialArc" cx="26" cy="26" r="22" fill="none" stroke="#2F6FE4" stroke-width="4"
           stroke-linecap="round" stroke-dasharray="34.5 138" transform="rotate(-90 26 26)"/>
       </svg>
       <div class="now-label mono" id="dialLabel">A</div>
@@ -452,15 +484,15 @@
     <div class="weeks-tabs" id="weekTabs"></div>
   </div>
   <div class="view-switch" id="viewSwitch">
-    <button class="view-btn active" data-view="rota">This week</button>
+    <button class="view-btn" data-view="rota">Planned meals</button>
     <button class="view-btn" data-view="bank">Meal bank</button>
-    <button class="view-btn" data-view="history">History</button>
+    <button class="view-btn active" data-view="history">History</button>
   </div>
 </header>
 
-<main id="mainGrid"></main>
+<main id="mainGrid" style="display:none;"></main>
 <main id="bankView" style="display:none;"></main>
-<main id="historyView" style="display:none;"></main>
+<main id="historyView"></main>
 
 <p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only</p>
 
@@ -475,6 +507,7 @@
       <input type="text" class="sheet-freetext-input" id="sheetFreeText" placeholder="type any meal not in the bank...">
       <button class="sheet-freetext-btn" id="sheetFreeTextBtn">use</button>
     </div>
+    <div class="freetext-suggestions" id="sheetFreeTextSuggestions"></div>
     <div class="chip-row" id="chipRow"></div>
     <div class="clear-row" id="clearRow">— clear this slot —</div>
     <div class="meal-list" id="mealList"></div>
@@ -482,7 +515,7 @@
 </div>
 
 <script>
-const APP_VERSION = "1.7.3";
+const APP_VERSION = "2.1.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -786,6 +819,30 @@ function renderGrid(){
 /* ───────────────────────── Meal bank sheet ───────────────────────── */
 const CHIP_TAGS = ["quick","medium","slow","chicken","beef","pork","fish","veggie","egg","pasta","curry"];
 
+// shared: as the person types into a free-text field, show a dropdown of matching existing meals
+function wireAutocomplete(inputEl, dropdownEl, onPick){
+  inputEl.addEventListener('input', ()=>{
+    const val = inputEl.value.trim().toLowerCase();
+    if(val.length < 1){ dropdownEl.classList.remove('open'); dropdownEl.innerHTML=''; return; }
+    const matches = allMeals().filter(m=> m.name.toLowerCase().includes(val)).slice(0, 6);
+    if(matches.length === 0){ dropdownEl.classList.remove('open'); dropdownEl.innerHTML=''; return; }
+    dropdownEl.innerHTML = matches.map(m=>
+      `<div class="freetext-suggestion" data-name="${escapeHtml(m.name)}">
+        <span>${escapeHtml(m.name)}</span>
+        <span class="freetext-suggestion-tags mono">${m.tags.filter(t=>t!=='lunch'&&t!=='tea').slice(0,3).join(' · ')}</span>
+      </div>`
+    ).join('');
+    dropdownEl.classList.add('open');
+    dropdownEl.querySelectorAll('.freetext-suggestion').forEach(el=>{
+      el.onclick = ()=>{
+        onPick(el.dataset.name);
+        dropdownEl.classList.remove('open');
+        dropdownEl.innerHTML='';
+      };
+    });
+  });
+}
+
 function openSheet(dayKey, slot, who){
   sheetTarget = {week:activeWeek, day:dayKey, slot, who};
   sheetFilter = null;
@@ -793,6 +850,8 @@ function openSheet(dayKey, slot, who){
   document.getElementById('sheetTitle').textContent =
     `${dayLabel} ${slot==='lunch'?'lunch':'tea'} — ${who==='family'?'everyone':'adults'}`;
   document.getElementById('sheetFreeText').value = '';
+  document.getElementById('sheetFreeTextSuggestions').classList.remove('open');
+  document.getElementById('sheetFreeTextSuggestions').innerHTML = '';
   renderChips();
   renderMealList();
   document.getElementById('sheetBackdrop').classList.add('open');
@@ -819,6 +878,18 @@ document.getElementById('sheetFreeTextBtn').onclick = useFreeTextMeal;
 document.getElementById('sheetFreeText').addEventListener('keydown', e=>{
   if(e.key === 'Enter') useFreeTextMeal();
 });
+wireAutocomplete(
+  document.getElementById('sheetFreeText'),
+  document.getElementById('sheetFreeTextSuggestions'),
+  (name)=>{
+    if(!sheetTarget) return;
+    const {week, day, slot, who} = sheetTarget;
+    template[week][day][slot][who] = name;
+    saveTemplate(template);
+    closeSheet();
+    renderAll();
+  }
+);
 document.getElementById('clearRow').onclick = ()=>{
   if(!sheetTarget) return;
   const {week, day, slot, who} = sheetTarget;
@@ -1016,6 +1087,7 @@ function renderBankView(){
         <input type="text" class="bank-add-input" id="bankAddInput" placeholder="type a meal name...">
         <button class="bank-add-btn" id="bankAddBtn">add</button>
       </div>
+      <div class="freetext-suggestions" id="bankAddSuggestions"></div>
     </div>
     <div class="bank-controls" id="bankControls"></div>
     <div id="bankList"></div>
@@ -1024,6 +1096,11 @@ function renderBankView(){
   document.getElementById('bankAddInput').addEventListener('keydown', e=>{
     if(e.key === 'Enter') addCustomMeal();
   });
+  wireAutocomplete(
+    document.getElementById('bankAddInput'),
+    document.getElementById('bankAddSuggestions'),
+    (name)=>{ document.getElementById('bankAddInput').value = name; }
+  );
   renderBankControls();
   renderBankList();
 }
@@ -1173,13 +1250,14 @@ function renderHistoryList(){
 }
 
 /* ───────────────────────── View switcher ───────────────────────── */
-let currentView = 'rota';
+let currentView = 'history';
 function setView(v){
   currentView = v;
   document.querySelectorAll('.view-btn').forEach(b=> b.classList.toggle('active', b.dataset.view===v));
   document.getElementById('mainGrid').style.display = v==='rota' ? '' : 'none';
   document.getElementById('bankView').style.display = v==='bank' ? '' : 'none';
   document.getElementById('historyView').style.display = v==='history' ? '' : 'none';
+  if(v==='rota') renderAll();
   if(v==='bank') renderBankView();
   if(v==='history') renderHistoryView();
 }
@@ -1191,7 +1269,8 @@ document.querySelectorAll('.view-btn').forEach(b=>{
 function renderAll(){ renderHeader(); renderGrid(); }
 document.getElementById('versionBadge').textContent = `v${APP_VERSION}`;
 document.title = `Meal Rota v${APP_VERSION}`;
-renderAll();
+renderHeader(); // dial + week tabs still needed even when History is the landing view
+renderHistoryView();
 
 // PWA basics
 if('serviceWorker' in navigator){

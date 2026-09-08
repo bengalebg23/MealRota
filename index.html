@@ -28,6 +28,27 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.6.0 — pre-populated ingredients for all ~65 built-in UNIFIED_MEALS meals
+           at Ben's explicit request (reversing the earlier decision to leave
+           them blank rather than guess). These are best-guess estimates —
+           reasonable UK household ingredients and quantities, not precise or
+           verified — worth spot-checking/editing via Meal Bank as they come
+           up in real weeks. Deliberately left "Karen's", "Nursery", and
+           "MIRA" without ingredients since those aren't real recipes, they're
+           placeholders for "fed elsewhere" (grandparents/nursery/work
+           canteen) and never need shopping for.
+  v2.5.0 — new "Shopping" tab: aggregates ingredients across every meal
+           planned in a chosen week (A/B/C/D). Meals now have an optional
+           ingredients list (one per line), added via the same tag-editor
+           panel in Meal Bank, stored/overridden the same way as tags. The
+           list dedupes ingredients case-insensitively, sorts alphabetically,
+           and is a checkable checklist (checks persist in localStorage,
+           "clear all checks" resets for a new trip). Deliberately does NOT
+           guess ingredients for meals that don't have them yet — flags those
+           meal names under "Needs attention" instead, same for any planned
+           meal typed as free text without being saved to the bank (so its
+           ingredients are unknown). Most meals start with zero ingredients
+           recorded; this needs to be filled in gradually via Meal Bank.
   v2.4.0 — meal tags are now editable after the fact. Tapping a pill in the
            Meal Bank opens an inline editor with toggle chips for When
            (lunch/tea, multi-select), Who (everyone/adults/kids, multi-select),
@@ -168,6 +189,13 @@
     notifications above, worth doing together rather than twice.
   - Lunch slots are almost entirely unplanned — only Tea has been worked
     through in detail so far.
+  - SHOPPING LIST INGREDIENTS: built-in meals now have AI-guessed ingredients
+    (added v2.6.0, at Ben's request, reversing the earlier "leave blank"
+    decision) — these are estimates, not verified, so expect to correct
+    quantities/items as they come up in real shopping lists. New meals added
+    via the free-text field or Meal Bank still start with no ingredients
+    unless typed in manually. "Karen's"/"Nursery"/"MIRA" are intentionally
+    left without ingredients (meals eaten elsewhere, not cooked at home).
 
   HOW TO PICK THIS UP IN A NEW CHAT
   Paste this file (or point at the GitHub repo) and summarise: "continuing
@@ -184,7 +212,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.4.0</title>
+<title>Meal Rota v2.6.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -459,9 +487,32 @@
     cursor:pointer;
   }
   .tag-editor-chip.on{background:var(--mustard); color:#ffffff; border-color:var(--mustard);}
+  .tag-editor-ingredients{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--paper); font-family:'Inter',sans-serif; font-size:12.5px; padding:8px; resize:vertical;
+  }
   .tag-editor-save{
     width:100%; background:var(--today); color:#ffffff; border:none; border-radius:8px;
     padding:8px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:12.5px; cursor:pointer; margin-top:2px;
+  }
+
+  /* ── Shopping list tab ── */
+  .shopping-controls{padding:14px 4px 4px;}
+  .shopping-item{
+    display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:9px 12px; margin:0 4px 6px;
+  }
+  .shopping-item input[type=checkbox]{width:19px; height:19px; accent-color:var(--today); flex:none;}
+  .shopping-item-label{font-size:13.5px; color:var(--paper); flex:1;}
+  .shopping-item.checked .shopping-item-label{color:var(--muted); text-decoration:line-through;}
+  .shopping-missing{
+    background:var(--surface-2); border:1px dashed var(--rose-dim); border-radius:10px;
+    padding:10px 12px; margin:0 4px; font-size:12.5px; color:var(--paper-dim); line-height:1.5;
+  }
+  .shopping-missing b{color:var(--rose);}
+  .shopping-clear-btn{
+    font-family:'Inter',sans-serif; font-size:12px; font-weight:600; color:var(--rose);
+    background:none; border:1px solid var(--rose-dim); border-radius:8px; padding:6px 12px; cursor:pointer;
   }
 
   /* ── History tab ── */
@@ -534,12 +585,14 @@
     <button class="view-btn" data-view="rota">Planned meals</button>
     <button class="view-btn" data-view="bank">Meal bank</button>
     <button class="view-btn active" data-view="history">History</button>
+    <button class="view-btn" data-view="shopping">Shopping</button>
   </div>
 </header>
 
 <main id="mainGrid" style="display:none;"></main>
 <main id="bankView" style="display:none;"></main>
 <main id="historyView"></main>
+<main id="shoppingView" style="display:none;"></main>
 
 <p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only</p>
 
@@ -566,77 +619,77 @@
 </div>
 
 <script>
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.6.0";
 const UNIFIED_MEALS = [
-  {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
-  {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
-  {name:"Fish pie", tags:["tea","fish","everyone","slow","bake"]},
-  {name:"Lasagne", tags:["tea","beef","everyone","slow","pasta"]},
-  {name:"Fish cakes + wedges", tags:["tea","fish","everyone","medium"]},
-  {name:"Stir fry", tags:["tea","chicken","everyone","quick"]},
-  {name:"Tinga + rice", tags:["tea","chicken","everyone","medium","rice"]},
-  {name:"Cottage pie", tags:["tea","beef","everyone","slow","bake"]},
-  {name:"Chicken & leek bake", tags:["tea","chicken","everyone","medium","bake"]},
-  {name:"Burgers", tags:["tea","beef","everyone","quick"]},
-  {name:"Sausage orzo", tags:["tea","pork","everyone","medium","pasta","one-pot"]},
-  {name:"One pot garlic chicken", tags:["tea","chicken","everyone","medium","one-pot"]},
-  {name:"Teriyaki skewers", tags:["tea","chicken","everyone","medium","rice"]},
-  {name:"Chilli", tags:["tea","beef","everyone","medium","one-pot"]},
-  {name:"Pizza", tags:["tea","everyone","quick"]},
-  {name:"Roast", tags:["tea","everyone","slow"]},
-  {name:"Fajitas", tags:["tea","chicken","everyone","quick"]},
-  {name:"Tortellini", tags:["tea","everyone","quick","pasta"]},
-  {name:"Pulled pork fajitas", tags:["tea","pork","everyone","slow"]},
-  {name:"Tuna pasta", tags:["tea","fish","everyone","quick","pasta"]},
-  {name:"Mozzarella melts", tags:["tea","everyone","quick"]},
-  {name:"Sausage and veg and potatoes", tags:["tea","pork","everyone","medium","one-tray"]},
-  {name:"Fish fingers and veg and beans", tags:["tea","fish","everyone","quick"]},
-  {name:"Laksa", tags:["tea","chicken","adults","medium"]},
-  {name:"Thai curry", tags:["tea","chicken","adults","medium","curry"]},
-  {name:"Indian curry", tags:["tea","chicken","adults","medium","curry"]},
-  {name:"Fajita + nachos", tags:["tea","chicken","adults","quick"]},
-  {name:"Loaded nachos", tags:["tea","beef","adults","quick"]},
-  {name:"Sourdough chicken kievs", tags:["tea","chicken","adults","medium"]},
-  {name:"Mushroom burgers", tags:["tea","veggie","adults","quick"]},
-  {name:"Spinach ricotta pasta bake", tags:["tea","veggie","adults","medium","pasta","bake"]},
-  {name:"Greek feta salad", tags:["tea","veggie","adults","quick","salad"]},
-  {name:"Aioli roast veg + chorizo + potato", tags:["tea","pork","adults","medium","one-tray"]},
-  {name:"Marry me chicken", tags:["tea","chicken","adults","medium"]},
-  {name:"Marry me salmon", tags:["tea","fish","adults","medium"]},
-  {name:"Chicken Alfredo", tags:["tea","chicken","kids","quick","pasta"]},
-  {name:"Pitta pizza", tags:["lunch","tea","kids","quick"]},
-  {name:"Fish fingers + wedges", tags:["tea","fish","kids","quick"]},
-  {name:"Porridge fingers", tags:["tea","kids","quick"]},
-  {name:"Mac & cheese", tags:["tea","veggie","kids","medium","pasta"]},
-  {name:"Pasta sauce", tags:["tea","veggie","kids","quick","pasta"]},
-  {name:"Snack Attack", tags:["tea","kids","quick"]},
-  {name:"Dairylea Dunker", tags:["tea","kids","quick"]},
+  {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
+  {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
+  {name:"Fish pie", tags:["tea","fish","everyone","slow","bake"], ingredients:["white fish fillets","smoked fish fillet","potatoes","butter","milk","peas","parsley"]},
+  {name:"Lasagne", tags:["tea","beef","everyone","slow","pasta"], ingredients:["lasagne sheets","minced beef","onion","carrot","celery","chopped tomatoes","tomato purée","butter","flour","milk","cheddar cheese"]},
+  {name:"Fish cakes + wedges", tags:["tea","fish","everyone","medium"], ingredients:["fish cakes","potatoes","peas"]},
+  {name:"Stir fry", tags:["tea","chicken","everyone","quick"], ingredients:["chicken breast","stir fry vegetables","noodles","soy sauce","garlic","ginger"]},
+  {name:"Tinga + rice", tags:["tea","chicken","everyone","medium","rice"], ingredients:["chicken breast","chipotle paste","chopped tomatoes","onion","rice"]},
+  {name:"Cottage pie", tags:["tea","beef","everyone","slow","bake"], ingredients:["minced beef","onion","carrot","peas","potatoes","beef stock cube","Worcestershire sauce"]},
+  {name:"Chicken & leek bake", tags:["tea","chicken","everyone","medium","bake"], ingredients:["chicken breast","leeks","crème fraîche","potatoes","cheddar cheese"]},
+  {name:"Burgers", tags:["tea","beef","everyone","quick"], ingredients:["beef burgers","burger buns","cheese slices","lettuce","tomato"]},
+  {name:"Sausage orzo", tags:["tea","pork","everyone","medium","pasta","one-pot"], ingredients:["sausages","orzo pasta","chopped tomatoes","onion","spinach"]},
+  {name:"One pot garlic chicken", tags:["tea","chicken","everyone","medium","one-pot"], ingredients:["chicken thighs","garlic","chicken stock","potatoes","green beans"]},
+  {name:"Teriyaki skewers", tags:["tea","chicken","everyone","medium","rice"], ingredients:["chicken breast","teriyaki sauce","peppers","rice"]},
+  {name:"Chilli", tags:["tea","beef","everyone","medium","one-pot"], ingredients:["minced beef","kidney beans","chopped tomatoes","onion","chilli powder","rice"]},
+  {name:"Pizza", tags:["tea","everyone","quick"], ingredients:["pizza bases","tomato sauce","mozzarella","toppings of choice"]},
+  {name:"Roast", tags:["tea","everyone","slow"], ingredients:["chicken or joint of meat","potatoes","carrots","parsnips","broccoli","gravy granules","Yorkshire puddings"]},
+  {name:"Fajitas", tags:["tea","chicken","everyone","quick"], ingredients:["chicken breast","fajita seasoning","peppers","onion","tortilla wraps","soured cream"]},
+  {name:"Tortellini", tags:["tea","everyone","quick","pasta"], ingredients:["fresh tortellini","passata","parmesan"]},
+  {name:"Pulled pork fajitas", tags:["tea","pork","everyone","slow"], ingredients:["pork shoulder","BBQ sauce","tortilla wraps","coleslaw"]},
+  {name:"Tuna pasta", tags:["tea","fish","everyone","quick","pasta"], ingredients:["pasta","tinned tuna","sweetcorn","mayonnaise"]},
+  {name:"Mozzarella melts", tags:["tea","everyone","quick"], ingredients:["ciabatta","mozzarella","tomato","pesto"]},
+  {name:"Sausage and veg and potatoes", tags:["tea","pork","everyone","medium","one-tray"], ingredients:["sausages","potatoes","mixed vegetables"]},
+  {name:"Fish fingers and veg and beans", tags:["tea","fish","everyone","quick"], ingredients:["fish fingers","baked beans","peas"]},
+  {name:"Laksa", tags:["tea","chicken","adults","medium"], ingredients:["chicken thigh","laksa paste","coconut milk","rice noodles","beansprouts"]},
+  {name:"Thai curry", tags:["tea","chicken","adults","medium","curry"], ingredients:["chicken breast","Thai curry paste","coconut milk","rice","green beans"]},
+  {name:"Indian curry", tags:["tea","chicken","adults","medium","curry"], ingredients:["chicken breast","curry paste","chopped tomatoes","onion","rice","naan bread"]},
+  {name:"Fajita + nachos", tags:["tea","chicken","adults","quick"], ingredients:["chicken breast","fajita seasoning","tortilla chips","cheese","salsa"]},
+  {name:"Loaded nachos", tags:["tea","beef","adults","quick"], ingredients:["tortilla chips","minced beef","cheese","jalapeños","soured cream","salsa"]},
+  {name:"Sourdough chicken kievs", tags:["tea","chicken","adults","medium"], ingredients:["chicken breasts","garlic butter","sourdough breadcrumbs","potatoes"]},
+  {name:"Mushroom burgers", tags:["tea","veggie","adults","quick"], ingredients:["portobello mushrooms","burger buns","cheese","lettuce"]},
+  {name:"Spinach ricotta pasta bake", tags:["tea","veggie","adults","medium","pasta","bake"], ingredients:["pasta","spinach","ricotta","passata","mozzarella"]},
+  {name:"Greek feta salad", tags:["tea","veggie","adults","quick","salad"], ingredients:["feta","cucumber","tomatoes","olives","red onion","olive oil"]},
+  {name:"Aioli roast veg + chorizo + potato", tags:["tea","pork","adults","medium","one-tray"], ingredients:["chorizo","potatoes","mixed roast vegetables","garlic aioli"]},
+  {name:"Marry me chicken", tags:["tea","chicken","adults","medium"], ingredients:["chicken breast","sun-dried tomatoes","cream","parmesan","garlic"]},
+  {name:"Marry me salmon", tags:["tea","fish","adults","medium"], ingredients:["salmon fillets","sun-dried tomatoes","cream","parmesan","garlic"]},
+  {name:"Chicken Alfredo", tags:["tea","chicken","kids","quick","pasta"], ingredients:["chicken breast","pasta","cream","parmesan","garlic"]},
+  {name:"Pitta pizza", tags:["lunch","tea","kids","quick"], ingredients:["pitta breads","tomato sauce","mozzarella","toppings of choice"]},
+  {name:"Fish fingers + wedges", tags:["tea","fish","kids","quick"], ingredients:["fish fingers","potatoes"]},
+  {name:"Porridge fingers", tags:["tea","kids","quick"], ingredients:["oats","banana","egg","milk"]},
+  {name:"Mac & cheese", tags:["tea","veggie","kids","medium","pasta"], ingredients:["macaroni","cheddar cheese","milk","butter","flour"]},
+  {name:"Pasta sauce", tags:["tea","veggie","kids","quick","pasta"], ingredients:["pasta","tomato pasta sauce"]},
+  {name:"Snack Attack", tags:["tea","kids","quick"], ingredients:["Snack Attack pack"]},
+  {name:"Dairylea Dunker", tags:["tea","kids","quick"], ingredients:["Dairylea Dunkers pack"]},
   {name:"Karen's", tags:["lunch","tea","everyone"]},
   {name:"Nursery", tags:["lunch","tea","everyone"]},
   {name:"MIRA", tags:["lunch","tea","everyone"]},
-  {name:"Sandwich", tags:["lunch","everyone","quick"]},
-  {name:"Salad pot", tags:["lunch","adults","quick","salad"]},
-  {name:"Pasta and sauce", tags:["lunch","everyone","quick","pasta"]},
-  {name:"Pinwheels", tags:["lunch","everyone","quick"]},
-  {name:"Quiche", tags:["lunch","everyone","medium"]},
-  {name:"Soup", tags:["lunch","everyone","quick"]},
-  {name:"Fish finger sandwiches", tags:["lunch","fish","everyone","quick"]},
-  {name:"Pâté", tags:["lunch","adults","quick"]},
-  {name:"Pizza pockets", tags:["lunch","kids","quick"]},
-  {name:"Omelette", tags:["lunch","egg","everyone","quick"]},
-  {name:"Scrambled eggs", tags:["lunch","egg","everyone","quick"]},
-  {name:"Tortilla", tags:["lunch","kids","quick"]},
-  {name:"PB toast", tags:["lunch","kids","quick"]},
-  {name:"Avo toast", tags:["lunch","everyone","quick"]},
-  {name:"Crumpets", tags:["lunch","kids","quick"]},
+  {name:"Sandwich", tags:["lunch","everyone","quick"], ingredients:["bread","filling of choice","butter"]},
+  {name:"Salad pot", tags:["lunch","adults","quick","salad"], ingredients:["mixed salad leaves","cherry tomatoes","cucumber","protein of choice"]},
+  {name:"Pasta and sauce", tags:["lunch","everyone","quick","pasta"], ingredients:["pasta","tomato sauce"]},
+  {name:"Pinwheels", tags:["lunch","everyone","quick"], ingredients:["tortilla wraps","cream cheese","ham","spinach"]},
+  {name:"Quiche", tags:["lunch","everyone","medium"], ingredients:["shortcrust pastry","eggs","milk","cheese","bacon"]},
+  {name:"Soup", tags:["lunch","everyone","quick"], ingredients:["soup","bread rolls"]},
+  {name:"Fish finger sandwiches", tags:["lunch","fish","everyone","quick"], ingredients:["fish fingers","bread","tartare sauce"]},
+  {name:"Pâté", tags:["lunch","adults","quick"], ingredients:["pâté","crackers"]},
+  {name:"Pizza pockets", tags:["lunch","kids","quick"], ingredients:["pizza pocket snacks"]},
+  {name:"Omelette", tags:["lunch","egg","everyone","quick"], ingredients:["eggs","cheese","milk"]},
+  {name:"Scrambled eggs", tags:["lunch","egg","everyone","quick"], ingredients:["eggs","butter","milk","bread"]},
+  {name:"Tortilla", tags:["lunch","kids","quick"], ingredients:["tortilla wraps","filling of choice"]},
+  {name:"PB toast", tags:["lunch","kids","quick"], ingredients:["bread","peanut butter"]},
+  {name:"Avo toast", tags:["lunch","everyone","quick"], ingredients:["bread","avocado"]},
+  {name:"Crumpets", tags:["lunch","kids","quick"], ingredients:["crumpets","butter"]},
   // ── newly agreed additions from the planning conversation ──
-  {name:"Sausage pasta", tags:["tea","pork","everyone","medium","pasta"], note:"hidden-veg tomato sauce"},
-  {name:"Chicken Kiev + wedges + sweetcorn", tags:["tea","chicken","everyone","medium"]},
-  {name:"Jar curry", tags:["tea","chicken","adults","quick","curry"]},
-  {name:"Salmon teriyaki + wedges", tags:["tea","fish","adults","medium"]},
-  {name:"Salmon teriyaki + rice + veg", tags:["tea","fish","adults","medium","rice"]},
-  {name:"Bacon carbonara", tags:["tea","pork","adults","quick","pasta"]},
-  {name:"Carbonara + garlic bread", tags:["tea","pork","everyone","quick","pasta"]},
+  {name:"Sausage pasta", tags:["tea","pork","everyone","medium","pasta"], note:"hidden-veg tomato sauce", ingredients:["sausages","pasta","chopped tomatoes","onion","carrot","garlic"]},
+  {name:"Chicken Kiev + wedges + sweetcorn", tags:["tea","chicken","everyone","medium"], ingredients:["chicken kievs","potatoes","sweetcorn"]},
+  {name:"Jar curry", tags:["tea","chicken","adults","quick","curry"], ingredients:["chicken breast","curry sauce jar","rice"]},
+  {name:"Salmon teriyaki + wedges", tags:["tea","fish","adults","medium"], ingredients:["salmon fillets","teriyaki sauce","potatoes"]},
+  {name:"Salmon teriyaki + rice + veg", tags:["tea","fish","adults","medium","rice"], ingredients:["salmon fillets","teriyaki sauce","rice","mixed vegetables"]},
+  {name:"Bacon carbonara", tags:["tea","pork","adults","quick","pasta"], ingredients:["bacon","spaghetti","eggs","parmesan","black pepper"]},
+  {name:"Carbonara + garlic bread", tags:["tea","pork","everyone","quick","pasta"], ingredients:["spaghetti","bacon","eggs","parmesan","garlic bread"]},
 ];
 
 // meals typed in via the Meal Bank's free-text field — merged with UNIFIED_MEALS at render time
@@ -683,6 +736,37 @@ function updateMealTags(name, newTags){
     saveTagOverrides(tagOverrides);
   }
 }
+
+// same pattern as tags, for each meal's ingredient list (used to build the
+// shopping list — most built-in meals start with no ingredients recorded)
+const INGREDIENT_OVERRIDES_KEY = "mealrota_ingredient_overrides_v1";
+function loadIngredientOverrides(){
+  try{ const raw = localStorage.getItem(INGREDIENT_OVERRIDES_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return {}; // { mealName: ingredients[] }
+}
+function saveIngredientOverrides(o){ try{ localStorage.setItem(INGREDIENT_OVERRIDES_KEY, JSON.stringify(o)); }catch(e){} }
+let ingredientOverrides = loadIngredientOverrides();
+(function applyIngredientOverrides(){
+  Object.keys(ingredientOverrides).forEach(name=>{
+    const m = UNIFIED_MEALS.find(x=> x.name === name);
+    if(m) m.ingredients = ingredientOverrides[name];
+  });
+})();
+function updateMealIngredients(name, newIngredients){
+  const custom = customMeals.find(m=> m.name === name);
+  if(custom){
+    custom.ingredients = newIngredients;
+    saveCustomMeals(customMeals);
+    return;
+  }
+  const builtin = UNIFIED_MEALS.find(m=> m.name === name);
+  if(builtin){
+    builtin.ingredients = newIngredients;
+    ingredientOverrides[name] = newIngredients;
+    saveIngredientOverrides(ingredientOverrides);
+  }
+}
+function ingredientsOf(m){ return m.ingredients || []; }
 
 /* ───────────────────────── Rota template data ───────────────────────── */
 const DAYS = [
@@ -1168,11 +1252,24 @@ function buildTagEditor(m){
   wrap.appendChild(chipRow('Protein', PROTEIN_TAGS, false));
   wrap.appendChild(chipRow('Speed', SPEED_TAGS, false));
 
+  const ingredientsGroup = document.createElement('div');
+  ingredientsGroup.className = 'tag-editor-group';
+  ingredientsGroup.innerHTML = `<div class="tag-editor-label">Ingredients (one per line — used for the shopping list)</div>`;
+  const ingredientsBox = document.createElement('textarea');
+  ingredientsBox.className = 'tag-editor-ingredients';
+  ingredientsBox.rows = 4;
+  ingredientsBox.placeholder = 'e.g.\n500g minced beef\n1 onion\n2 cloves garlic';
+  ingredientsBox.value = (m.ingredients || []).join('\n');
+  ingredientsGroup.appendChild(ingredientsBox);
+  wrap.appendChild(ingredientsGroup);
+
   const saveBtn = document.createElement('button');
   saveBtn.className = 'tag-editor-save';
-  saveBtn.textContent = 'Save tags';
+  saveBtn.textContent = 'Save';
   saveBtn.onclick = ()=>{
     updateMealTags(m.name, [...draft]);
+    const ingredients = ingredientsBox.value.split('\n').map(s=>s.trim()).filter(Boolean);
+    updateMealIngredients(m.name, ingredients);
     bankExpanded.delete(m.name);
     delete bankTagDraft[m.name];
     renderBankList();
@@ -1416,6 +1513,102 @@ function renderHistoryList(){
   });
 }
 
+/* ───────────────────────── Shopping list ───────────────────────── */
+const SHOPPING_CHECKED_KEY = "mealrota_shopping_checked_v1";
+function loadShoppingChecked(){
+  try{ const raw = localStorage.getItem(SHOPPING_CHECKED_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return {}; // { itemTextLowercase: true }
+}
+function saveShoppingChecked(c){ try{ localStorage.setItem(SHOPPING_CHECKED_KEY, JSON.stringify(c)); }catch(e){} }
+let shoppingChecked = loadShoppingChecked();
+let shoppingWeek = WEEK_KEYS[currentWeekIndex()];
+
+function buildShoppingList(weekKey){
+  const mealNames = new Set();
+  DAYS.forEach(d=>{
+    const day = template[weekKey][d.key];
+    [day.lunch.family, day.lunch.adults, day.tea.family, day.tea.adults].forEach(name=>{
+      if(name) mealNames.add(name);
+    });
+  });
+
+  const ingredientMap = new Map(); // lowercase -> original-case display text
+  const missingIngredients = []; // meal names found in bank but with no ingredients recorded
+  const unmatchedMeals = []; // meal names not in the bank at all (typed free-text, not saved)
+
+  mealNames.forEach(name=>{
+    const m = allMeals().find(x=> x.name === name);
+    if(!m){ unmatchedMeals.push(name); return; }
+    const ing = ingredientsOf(m);
+    if(ing.length === 0){ missingIngredients.push(name); return; }
+    ing.forEach(item=>{
+      const key = item.toLowerCase();
+      if(!ingredientMap.has(key)) ingredientMap.set(key, item);
+    });
+  });
+
+  const items = [...ingredientMap.values()].sort((a,b)=> a.localeCompare(b));
+  return { items, missingIngredients, unmatchedMeals, mealCount: mealNames.size };
+}
+
+function renderShoppingView(){
+  const view = document.getElementById('shoppingView');
+  const { items, missingIngredients, unmatchedMeals, mealCount } = buildShoppingList(shoppingWeek);
+
+  view.innerHTML = `
+    <div class="shopping-controls">
+      <div class="bank-filter-label">Shopping list for</div>
+      <div class="bank-chip-row" id="shoppingWeekChips"></div>
+    </div>
+    <div class="section-label">${items.length} item${items.length===1?'':'s'} · ${mealCount} meal${mealCount===1?'':'s'} planned</div>
+    <div id="shoppingItems"></div>
+    ${(missingIngredients.length || unmatchedMeals.length) ? `
+      <div class="section-label">Needs attention</div>
+      <div class="shopping-missing">
+        ${missingIngredients.length ? `<b>No ingredients recorded yet</b> — add them via Meal Bank: ${missingIngredients.map(escapeHtml).join(', ')}<br>` : ''}
+        ${unmatchedMeals.length ? `<b>Not in the meal bank</b> (typed without saving) — ingredients unknown: ${unmatchedMeals.map(escapeHtml).join(', ')}` : ''}
+      </div>
+    ` : ''}
+    ${items.length ? `<div style="padding:14px 4px 0;"><button class="shopping-clear-btn" id="shoppingClearBtn">clear all checks</button></div>` : ''}
+  `;
+
+  const weekChips = document.getElementById('shoppingWeekChips');
+  WEEK_KEYS.forEach(wk=>{
+    const chip = document.createElement('div');
+    chip.className = 'bank-chip' + (shoppingWeek===wk ? ' active':'');
+    chip.textContent = `Week ${wk}`;
+    chip.onclick = ()=>{ shoppingWeek = wk; renderShoppingView(); };
+    weekChips.appendChild(chip);
+  });
+
+  const itemsWrap = document.getElementById('shoppingItems');
+  if(items.length===0){
+    itemsWrap.innerHTML = `<div class="bank-empty">No ingredients to show — either no meals are planned for this week, or the planned meals don't have ingredients recorded yet.</div>`;
+  } else {
+    items.forEach(item=>{
+      const key = item.toLowerCase();
+      const row = document.createElement('div');
+      row.className = 'shopping-item' + (shoppingChecked[key] ? ' checked' : '');
+      row.innerHTML = `<input type="checkbox" ${shoppingChecked[key] ? 'checked' : ''}><span class="shopping-item-label">${escapeHtml(item)}</span>`;
+      row.querySelector('input').onchange = (e)=>{
+        if(e.target.checked) shoppingChecked[key] = true; else delete shoppingChecked[key];
+        saveShoppingChecked(shoppingChecked);
+        row.classList.toggle('checked', e.target.checked);
+      };
+      itemsWrap.appendChild(row);
+    });
+  }
+
+  const clearBtn = document.getElementById('shoppingClearBtn');
+  if(clearBtn){
+    clearBtn.onclick = ()=>{
+      items.forEach(item=> delete shoppingChecked[item.toLowerCase()]);
+      saveShoppingChecked(shoppingChecked);
+      renderShoppingView();
+    };
+  }
+}
+
 /* ───────────────────────── View switcher ───────────────────────── */
 let currentView = 'history';
 function setView(v){
@@ -1424,9 +1617,11 @@ function setView(v){
   document.getElementById('mainGrid').style.display = v==='rota' ? '' : 'none';
   document.getElementById('bankView').style.display = v==='bank' ? '' : 'none';
   document.getElementById('historyView').style.display = v==='history' ? '' : 'none';
+  document.getElementById('shoppingView').style.display = v==='shopping' ? '' : 'none';
   if(v==='rota') renderAll();
   if(v==='bank') renderBankView();
   if(v==='history') renderHistoryView();
+  if(v==='shopping') renderShoppingView();
 }
 document.querySelectorAll('.view-btn').forEach(b=>{
   b.onclick = ()=> setView(b.dataset.view);

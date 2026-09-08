@@ -28,6 +28,18 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.3.0 — Meal Bank's "When" filter is now Lunch / Adult Tea / Kid Tea (was
+           just Lunch/Tea). "Adult Tea" shows meals tagged adults or everyone;
+           "Kid Tea" shows meals tagged kids or everyone — "everyone" meals
+           appear under both since the whole family eats them. Adding a new
+           meal while one of these is active now tags it correctly (adults/
+           kids) instead of just lunch/tea.
+  v2.2.0 — the picker sheet's free-text "type any meal not in the bank" field
+           now has an "also save this to the meal bank" checkbox (checked by
+           default) — previously it only filled that one slot. When checked,
+           the meal is added to customMeals tagged by slot (lunch/tea) and
+           who (everyone/adults) from context, same as adding via the Meal
+           Bank tab, just skipped if an exact-name match already exists.
   v2.1.0 — four changes: (1) shrunk day-name text in "Planned meals" so the
            whole week fits on one screen; (2) renamed "This week" tab to
            "Planned meals"; (3) History is now the default landing tab instead
@@ -163,7 +175,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.1.0</title>
+<title>Meal Rota v2.3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -335,6 +347,11 @@
     flex:none; background:var(--mustard); color:#ffffff; border:none; border-radius:9px;
     padding:0 16px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
   }
+  .sheet-savebank-row{
+    display:flex; align-items:center; gap:6px; margin:-6px 0 10px 2px;
+    font-family:'Inter',sans-serif; font-size:12px; color:var(--muted); cursor:pointer;
+  }
+  .sheet-savebank-row input{accent-color:var(--mustard); width:15px; height:15px;}
   .freetext-suggestions{
     display:none; flex-direction:column; gap:4px; margin:-4px 0 10px;
   }
@@ -507,6 +524,10 @@
       <input type="text" class="sheet-freetext-input" id="sheetFreeText" placeholder="type any meal not in the bank...">
       <button class="sheet-freetext-btn" id="sheetFreeTextBtn">use</button>
     </div>
+    <label class="sheet-savebank-row">
+      <input type="checkbox" id="sheetSaveToBank" checked>
+      also save this to the meal bank
+    </label>
     <div class="freetext-suggestions" id="sheetFreeTextSuggestions"></div>
     <div class="chip-row" id="chipRow"></div>
     <div class="clear-row" id="clearRow">— clear this slot —</div>
@@ -515,7 +536,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.3.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"]},
@@ -850,6 +871,7 @@ function openSheet(dayKey, slot, who){
   document.getElementById('sheetTitle').textContent =
     `${dayLabel} ${slot==='lunch'?'lunch':'tea'} — ${who==='family'?'everyone':'adults'}`;
   document.getElementById('sheetFreeText').value = '';
+  document.getElementById('sheetSaveToBank').checked = true;
   document.getElementById('sheetFreeTextSuggestions').classList.remove('open');
   document.getElementById('sheetFreeTextSuggestions').innerHTML = '';
   renderChips();
@@ -871,6 +893,12 @@ function useFreeTextMeal(){
   const {week, day, slot, who} = sheetTarget;
   template[week][day][slot][who] = val;
   saveTemplate(template);
+  const saveToBank = document.getElementById('sheetSaveToBank').checked;
+  if(saveToBank && !allMeals().some(m=> m.name.toLowerCase() === val.toLowerCase())){
+    const tags = [slot, who==='adults' ? 'adults' : 'everyone'];
+    customMeals.push({name: val, tags});
+    saveCustomMeals(customMeals);
+  }
   closeSheet();
   renderAll();
 }
@@ -941,7 +969,7 @@ const PROTEIN_COLOR = {chicken:"var(--c-chicken)", beef:"var(--c-beef)", pork:"v
 
 let bankProtein = null;   // one of PROTEIN_TAGS or null
 let bankSpeed = null;     // one of SPEED_TAGS or null
-let bankWhen = null;      // "lunch" | "tea" | null
+let bankWhen = null;      // "lunch" | "teaAdults" | "teaKids" | null
 let bankSort = "name";    // "name" | "protein" | "speed"
 let bankExpanded = new Set(); // meal names with tags currently shown
 
@@ -950,6 +978,13 @@ function speedOf(m){ return SPEED_TAGS.find(t=> m.tags.includes(t)) || null; }
 function pillColor(m){
   const p = proteinOf(m);
   return p ? PROTEIN_COLOR[p] : "var(--c-default)";
+}
+function matchesBankWhen(m){
+  if(!bankWhen) return true;
+  if(bankWhen === 'lunch') return m.tags.includes('lunch');
+  if(bankWhen === 'teaAdults') return m.tags.includes('tea') && (m.tags.includes('adults') || m.tags.includes('everyone'));
+  if(bankWhen === 'teaKids') return m.tags.includes('tea') && (m.tags.includes('kids') || m.tags.includes('everyone'));
+  return true;
 }
 
 function renderBankControls(){
@@ -961,7 +996,7 @@ function renderBankControls(){
   whenGroup.innerHTML = `<div class="bank-filter-label">When</div>`;
   const whenRow = document.createElement('div');
   whenRow.className = 'bank-chip-row';
-  [{key:null,label:'all'}, {key:'lunch',label:'lunch'}, {key:'tea',label:'tea'}].forEach(opt=>{
+  [{key:null,label:'all'}, {key:'lunch',label:'lunch'}, {key:'teaAdults',label:'adult tea'}, {key:'teaKids',label:'kid tea'}].forEach(opt=>{
     const chip = document.createElement('div');
     chip.className = 'bank-chip' + (bankWhen===opt.key ? ' active':'');
     chip.textContent = opt.label;
@@ -1022,7 +1057,7 @@ function renderBankList(){
   list.innerHTML = '';
 
   let meals = allMeals();
-  if(bankWhen) meals = meals.filter(m=> m.tags.includes(bankWhen));
+  if(bankWhen) meals = meals.filter(matchesBankWhen);
   if(bankProtein) meals = meals.filter(m=> m.tags.includes(bankProtein));
   if(bankSpeed) meals = meals.filter(m=> m.tags.includes(bankSpeed));
 
@@ -1110,7 +1145,11 @@ function addCustomMeal(){
   const name = input.value.trim();
   if(!name) return;
   // tag it so it's findable: matches current When/protein/speed filters if set, otherwise both meal times
-  const tags = bankWhen ? [bankWhen] : ['lunch','tea'];
+  let tags;
+  if(bankWhen === 'lunch') tags = ['lunch'];
+  else if(bankWhen === 'teaAdults') tags = ['tea', 'adults'];
+  else if(bankWhen === 'teaKids') tags = ['tea', 'kids'];
+  else tags = ['lunch', 'tea'];
   if(bankProtein) tags.push(bankProtein);
   if(bankSpeed) tags.push(bankSpeed);
   customMeals.push({name, tags:[...new Set(tags)]});

@@ -28,6 +28,11 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.7.0 — the History tab's log fields (Lunch, Tea-adults, Tea-kids) now have
+           the same autocomplete dropdown as the other free-text meal fields —
+           previously only the Planned meals picker sheet and Meal Bank's add
+           box had this, History's own fields were missed. Picking a
+           suggestion just fills that field; still need to tap Save.
   v2.6.0 — pre-populated ingredients for all ~65 built-in UNIFIED_MEALS meals
            at Ben's explicit request (reversing the earlier decision to leave
            them blank rather than guess). These are best-guess estimates —
@@ -212,7 +217,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.6.0</title>
+<title>Meal Rota v2.7.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -619,7 +624,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.6.0";
+const APP_VERSION = "2.7.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -1431,10 +1436,13 @@ function renderHistoryView(){
       </div>
       <div class="history-field-label">Lunch</div>
       <input type="text" class="history-text-input" id="histLunch" placeholder="e.g. leftover pasta" value="${escapeHtml(existing.lunch||'')}">
+      <div class="freetext-suggestions" id="histLunchSuggestions"></div>
       <div class="history-field-label">Tea — adults</div>
       <input type="text" class="history-text-input" id="histTeaAdults" placeholder="e.g. salmon teriyaki" value="${escapeHtml(existing.teaAdults||'')}">
+      <div class="freetext-suggestions" id="histTeaAdultsSuggestions"></div>
       <div class="history-field-label">Tea — kids</div>
       <input type="text" class="history-text-input" id="histTeaKids" placeholder="e.g. fish fingers" value="${escapeHtml(existing.teaKids||'')}">
+      <div class="freetext-suggestions" id="histTeaKidsSuggestions"></div>
       <button class="history-prefill-btn" id="histPrefill">↺ prefill from that day's plan</button>
       <button class="history-save-btn" id="histSave">Save this day</button>
     </div>
@@ -1465,6 +1473,21 @@ function renderHistoryView(){
     historyEditDate = null;
     renderHistoryView();
   };
+  wireAutocomplete(
+    document.getElementById('histLunch'),
+    document.getElementById('histLunchSuggestions'),
+    (name)=>{ document.getElementById('histLunch').value = name; }
+  );
+  wireAutocomplete(
+    document.getElementById('histTeaAdults'),
+    document.getElementById('histTeaAdultsSuggestions'),
+    (name)=>{ document.getElementById('histTeaAdults').value = name; }
+  );
+  wireAutocomplete(
+    document.getElementById('histTeaKids'),
+    document.getElementById('histTeaKidsSuggestions'),
+    (name)=>{ document.getElementById('histTeaKids').value = name; }
+  );
 
   renderHistoryDayChips();
   renderHistoryList();

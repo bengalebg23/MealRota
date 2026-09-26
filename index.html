@@ -28,6 +28,11 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.8.1 — recipe card shows a photo at the top when the recipe has
+           `image` (web URL) — hotlinked, so it needs signal and relies on the
+           source site keeping the file; if it fails to load the banner just
+           hides itself. Optional `imageCredit` shows as a small caption.
+           First one: Lamb & feta flatbreads, photo from joyoliver.com.
   v2.8.0 — first recipe card. Meals can now carry an optional `recipe`
            object: { serves, time, intro, ingredients:[{qty, unit, item}],
            steps:[{title, text, timer (seconds, optional)}], notes }. Meals with
@@ -228,7 +233,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.8.0</title>
+<title>Meal Rota v2.8.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -517,6 +522,10 @@
   /* ── Recipe sheet (v2.8.0) ── */
   .recipe-sheet{max-height:92vh;}
   .recipe-body{overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 2px 6px;}
+  .recipe-hero{margin:0 0 12px; position:relative;}
+  .recipe-hero img{display:block; width:100%; height:200px; object-fit:cover; border-radius:14px; background:var(--surface-2);}
+  .recipe-hero-credit{position:absolute; right:8px; bottom:6px; font-size:10px; color:#fff;
+    background:rgba(0,0,0,.45); padding:2px 7px; border-radius:10px;}
   .recipe-intro{font-size:13px; color:var(--paper-dim); line-height:1.5; margin:0 0 10px;}
   .recipe-meta{display:flex; align-items:center; justify-content:space-between; gap:10px;
     background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:8px 10px; margin-bottom:14px;}
@@ -680,7 +689,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.8.0";
+const APP_VERSION = "2.8.1";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -748,6 +757,7 @@ const UNIFIED_MEALS = [
     ingredients:["lamb mince","red onion","garlic","ground cumin","ground coriander","smoked paprika","tomato purée","olive oil","flatbreads","feta","Greek yoghurt","lemon","cucumber","cherry tomatoes","fresh mint","pomegranate seeds"],
     recipe:{
       serves:4, time:"~30 min",
+      image:"https://joyoliver.com/wp-content/uploads/2022/06/Lamb-Flatbread-5.jpeg", imageCredit:"Photo: Joy + Oliver",
       intro:"Warm flatbreads topped with cumin-spiced lamb, crumbled feta, fresh veg and a garlicky yoghurt sauce.",
       ingredients:[
         {qty:500, unit:"g", item:"lamb mince"},
@@ -1420,6 +1430,14 @@ function renderRecipe(){
   const r = recipeMeal.recipe;
   const body = document.getElementById('recipeBody');
   body.innerHTML = '';
+  if(r.image){
+    const hero = document.createElement('div'); hero.className = 'recipe-hero';
+    const img = document.createElement('img'); img.src = r.image; img.alt = recipeMeal.name; img.referrerPolicy = 'no-referrer';
+    img.onerror = ()=> hero.remove();
+    hero.appendChild(img);
+    if(r.imageCredit){ const c = document.createElement('span'); c.className = 'recipe-hero-credit'; c.textContent = r.imageCredit; hero.appendChild(c); }
+    body.appendChild(hero);
+  }
   if(r.intro){ const p = document.createElement('p'); p.className='recipe-intro'; p.textContent = r.intro; body.appendChild(p); }
 
   const meta = document.createElement('div'); meta.className = 'recipe-meta';

@@ -28,6 +28,17 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.8.0 — first recipe card. Meals can now carry an optional `recipe`
+           object: { serves, time, intro, ingredients:[{qty, unit, item}],
+           steps:[{title, text, timer (seconds, optional)}], notes }. Meals with
+           one show a 📖 in the Meal Bank; opening the meal shows a "View
+           recipe" button that opens a full recipe sheet with a servings −/+
+           control (scales every quantity), numbered steps, and tap-to-start
+           countdown timers on timed steps (vibrates when done). First recipe:
+           "Lamb & feta flatbreads" (new meal). Also added "lamb" as a protein
+           tag (filter chip, picker chip, colour). The plain `ingredients`
+           array is still what the Shopping tab uses. Recipes are built-in only
+           for now — no in-app recipe editing or paste-import yet.
   v2.7.0 — the History tab's log fields (Lunch, Tea-adults, Tea-kids) now have
            the same autocomplete dropdown as the other free-text meal fields —
            previously only the Planned meals picker sheet and Meal Bank's add
@@ -217,7 +228,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.7.0</title>
+<title>Meal Rota v2.8.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -241,6 +252,7 @@
     --c-fish:#2F8FA8;
     --c-veggie:#4C9A5D;
     --c-egg:#B99A2E;
+    --c-lamb:#8E4B8A;
     --c-default:#8a97a8;
     --radius:14px;
   }
@@ -501,6 +513,39 @@
     padding:8px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:12.5px; cursor:pointer; margin-top:2px;
   }
 
+
+  /* ── Recipe sheet (v2.8.0) ── */
+  .recipe-sheet{max-height:92vh;}
+  .recipe-body{overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 2px 6px;}
+  .recipe-intro{font-size:13px; color:var(--paper-dim); line-height:1.5; margin:0 0 10px;}
+  .recipe-meta{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:8px 10px; margin-bottom:14px;}
+  .recipe-time{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted);}
+  .recipe-serves{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600;}
+  .recipe-serves button{width:32px; height:32px; border-radius:50%; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--paper); font-size:18px; line-height:1; cursor:pointer;}
+  .recipe-h{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); margin:4px 2px 8px;}
+  .recipe-ing{list-style:none; margin:0 0 16px; padding:0; background:var(--surface); border:1px solid var(--line); border-radius:12px;}
+  .recipe-ing li{display:flex; gap:10px; padding:8px 12px; border-bottom:1px solid var(--surface-2); font-size:13.5px; cursor:pointer;}
+  .recipe-ing li:last-child{border-bottom:none;}
+  .recipe-ing .q{flex:none; min-width:64px; font-weight:700; color:var(--mustard-dim); font-variant-numeric:tabular-nums;}
+  .recipe-ing li.got{color:var(--muted); text-decoration:line-through;}
+  .recipe-ing li.got .q{color:var(--muted);}
+  .recipe-step{display:flex; gap:10px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px;}
+  .recipe-step-n{flex:none; width:24px; height:24px; border-radius:50%; background:var(--mustard); color:#fff;
+    font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .recipe-step-t{font-weight:700; font-size:13.5px; margin-bottom:3px;}
+  .recipe-step-x{font-size:13px; line-height:1.5; color:var(--paper-dim);}
+  .recipe-timer{margin-top:7px; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600;
+    border:1px solid var(--mustard); color:var(--mustard-dim); background:var(--surface); border-radius:16px; padding:5px 12px; cursor:pointer;}
+  .recipe-timer.running{background:var(--mustard); color:#fff;}
+  .recipe-timer.done{background:var(--today); border-color:var(--today); color:#fff;}
+  .recipe-notes{font-size:12.5px; line-height:1.5; color:var(--paper-dim); background:var(--surface-2);
+    border-radius:10px; padding:10px 12px; margin:8px 0 4px;}
+  .recipe-open-btn{width:100%; background:var(--mustard); color:#fff; border:none; border-radius:8px;
+    padding:9px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer; margin-bottom:10px;}
+
   /* ── Shopping list tab ── */
   .shopping-controls{padding:14px 4px 4px;}
   .shopping-item{
@@ -623,8 +668,19 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="recipeBackdrop">
+  <div class="sheet recipe-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title display" id="recipeTitle">Recipe</div>
+      <button class="sheet-close" id="recipeClose">✕</button>
+    </div>
+    <div class="recipe-body" id="recipeBody"></div>
+  </div>
+</div>
+
 <script>
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.8.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -688,6 +744,41 @@ const UNIFIED_MEALS = [
   {name:"Avo toast", tags:["lunch","everyone","quick"], ingredients:["bread","avocado"]},
   {name:"Crumpets", tags:["lunch","kids","quick"], ingredients:["crumpets","butter"]},
   // ── newly agreed additions from the planning conversation ──
+  {name:"Lamb & feta flatbreads", tags:["tea","lamb","everyone","medium"],
+    ingredients:["lamb mince","red onion","garlic","ground cumin","ground coriander","smoked paprika","tomato purée","olive oil","flatbreads","feta","Greek yoghurt","lemon","cucumber","cherry tomatoes","fresh mint","pomegranate seeds"],
+    recipe:{
+      serves:4, time:"~30 min",
+      intro:"Warm flatbreads topped with cumin-spiced lamb, crumbled feta, fresh veg and a garlicky yoghurt sauce.",
+      ingredients:[
+        {qty:500, unit:"g", item:"lamb mince"},
+        {qty:1, unit:"", item:"red onion, finely chopped"},
+        {qty:2, unit:"", item:"garlic cloves, crushed"},
+        {qty:1, unit:"tsp", item:"ground cumin"},
+        {qty:1, unit:"tsp", item:"ground coriander"},
+        {qty:1, unit:"tsp", item:"smoked paprika"},
+        {qty:1, unit:"tbsp", item:"tomato purée"},
+        {qty:1, unit:"tbsp", item:"olive oil"},
+        {qty:0.5, unit:"tsp", item:"salt"},
+        {qty:4, unit:"", item:"flatbreads or naan"},
+        {qty:150, unit:"g", item:"feta, crumbled"},
+        {qty:200, unit:"g", item:"Greek yoghurt"},
+        {qty:1, unit:"", item:"small garlic clove (for the sauce), grated"},
+        {qty:0.5, unit:"", item:"lemon, juiced"},
+        {qty:1, unit:"", item:"cucumber, diced"},
+        {qty:200, unit:"g", item:"cherry tomatoes, halved"},
+        {qty:1, unit:"", item:"small bunch fresh mint, chopped"},
+        {qty:1, unit:"tbsp", item:"pomegranate seeds (optional)"}
+      ],
+      steps:[
+        {title:"Make the yoghurt sauce", text:"Mix the yoghurt with the grated garlic, half the lemon juice and a pinch of salt. Chill until needed."},
+        {title:"Soften the onion", text:"Heat the oil in a large frying pan over a medium heat. Add the onion and cook until soft.", timer:300},
+        {title:"Brown the lamb", text:"Add the lamb mince, breaking it up, and cook until browned. Drain off excess fat if needed.", timer:480},
+        {title:"Spice it up", text:"Stir in the crushed garlic, cumin, coriander, paprika, tomato purée and salt. Cook for 2 minutes, adding a splash of water if it gets dry.", timer:120},
+        {title:"Warm the flatbreads", text:"Warm the flatbreads in a dry pan or the oven.", timer:180},
+        {title:"Assemble", text:"Spread yoghurt sauce on each flatbread, then top with the lamb, cucumber, tomatoes, crumbled feta, mint and pomegranate. Squeeze over the rest of the lemon."}
+      ],
+      notes:"Kid-friendly: skip the smoked paprika, or serve the veg on the side. Hummus works in place of the yoghurt sauce."
+    }},
   {name:"Sausage pasta", tags:["tea","pork","everyone","medium","pasta"], note:"hidden-veg tomato sauce", ingredients:["sausages","pasta","chopped tomatoes","onion","carrot","garlic"]},
   {name:"Chicken Kiev + wedges + sweetcorn", tags:["tea","chicken","everyone","medium"], ingredients:["chicken kievs","potatoes","sweetcorn"]},
   {name:"Jar curry", tags:["tea","chicken","adults","quick","curry"], ingredients:["chicken breast","curry sauce jar","rice"]},
@@ -992,7 +1083,7 @@ function renderGrid(){
 }
 
 /* ───────────────────────── Meal bank sheet ───────────────────────── */
-const CHIP_TAGS = ["quick","medium","slow","chicken","beef","pork","fish","veggie","egg","pasta","curry"];
+const CHIP_TAGS = ["quick","medium","slow","chicken","beef","pork","lamb","fish","veggie","egg","pasta","curry"];
 
 // shared: as the person types into a free-text field, show a dropdown of matching existing meals
 function wireAutocomplete(inputEl, dropdownEl, onPick){
@@ -1117,9 +1208,9 @@ function renderMealList(){
 }
 
 /* ───────────────────────── Meal bank browse view ───────────────────────── */
-const PROTEIN_TAGS = ["chicken","beef","pork","fish","veggie","egg"];
+const PROTEIN_TAGS = ["chicken","beef","pork","lamb","fish","veggie","egg"];
 const SPEED_TAGS = ["quick","medium","slow"];
-const PROTEIN_COLOR = {chicken:"var(--c-chicken)", beef:"var(--c-beef)", pork:"var(--c-pork)", fish:"var(--c-fish)", veggie:"var(--c-veggie)", egg:"var(--c-egg)"};
+const PROTEIN_COLOR = {chicken:"var(--c-chicken)", beef:"var(--c-beef)", pork:"var(--c-pork)", fish:"var(--c-fish)", veggie:"var(--c-veggie)", egg:"var(--c-egg)", lamb:"var(--c-lamb)"};
 
 let bankProtein = null;   // one of PROTEIN_TAGS or null
 let bankSpeed = null;     // one of SPEED_TAGS or null
@@ -1216,6 +1307,14 @@ function buildTagEditor(m){
   wrap.className = 'tag-editor';
   const draft = bankTagDraft[m.name];
 
+  if(m.recipe){
+    const recipeBtn = document.createElement('button');
+    recipeBtn.className = 'recipe-open-btn';
+    recipeBtn.textContent = '📖 View recipe';
+    recipeBtn.onclick = (e)=>{ e.stopPropagation(); setTimeout(()=> openRecipe(m), 0); };
+    wrap.appendChild(recipeBtn);
+  }
+
   if(m.note){
     const noteEl = document.createElement('div');
     noteEl.className = 'bank-pill-tags mono';
@@ -1284,6 +1383,97 @@ function buildTagEditor(m){
   return wrap;
 }
 
+
+// ── Recipe sheet (v2.8.0) ──
+let recipeMeal = null, recipeServes = 4, recipeGot = new Set(), recipeTimers = {};
+function fmtQty(q){
+  if(q==null || q===0) return '';
+  const whole = Math.floor(q), frac = q - whole;
+  const fr = [[0.25,'¼'],[0.333,'⅓'],[0.5,'½'],[0.667,'⅔'],[0.75,'¾']];
+  if(frac < 0.08) return String(whole);
+  if(frac > 0.92) return String(whole+1);
+  let best = null; for(const [v,g] of fr){ if(Math.abs(frac-v) < 0.09 && (!best || Math.abs(frac-v) < Math.abs(frac-best[0]))) best=[v,g]; }
+  if(best) return (whole? whole : '') + best[1];
+  return (Math.round(q*10)/10).toString();
+}
+function scaledQty(ing){
+  const r = recipeMeal.recipe;
+  let q = ing.qty * recipeServes / r.serves;
+  if(ing.unit==='g' || ing.unit==='ml'){ q = q>=100 ? Math.round(q/25)*25 : Math.round(q/5)*5; return q + ing.unit; }
+  const t = fmtQty(q);
+  return ing.unit ? `${t} ${ing.unit}` : t;
+}
+function fmtTime(sec){ const m = Math.floor(sec/60), s2 = sec%60; return `${m}:${String(s2).padStart(2,'0')}`; }
+function stopAllRecipeTimers(){ Object.values(recipeTimers).forEach(t=> clearInterval(t.id)); recipeTimers = {}; }
+function openRecipe(m){
+  if(!m || !m.recipe) return;
+  if(recipeMeal !== m){ stopAllRecipeTimers(); recipeGot = new Set(); recipeServes = m.recipe.serves; }
+  recipeMeal = m;
+  document.getElementById('recipeTitle').textContent = m.name;
+  renderRecipe();
+  document.getElementById('recipeBackdrop').classList.add('open');
+}
+function closeRecipe(){ document.getElementById('recipeBackdrop').classList.remove('open'); }
+document.getElementById('recipeClose').onclick = closeRecipe;
+document.getElementById('recipeBackdrop').onclick = (e)=>{ if(e.target.id==='recipeBackdrop') closeRecipe(); };
+function renderRecipe(){
+  const r = recipeMeal.recipe;
+  const body = document.getElementById('recipeBody');
+  body.innerHTML = '';
+  if(r.intro){ const p = document.createElement('p'); p.className='recipe-intro'; p.textContent = r.intro; body.appendChild(p); }
+
+  const meta = document.createElement('div'); meta.className = 'recipe-meta';
+  meta.innerHTML = `<span class="recipe-time">${escapeHtml(r.time||'')}</span>
+    <span class="recipe-serves"><button data-d="-1">−</button><span>Serves ${recipeServes}</span><button data-d="1">+</button></span>`;
+  meta.querySelectorAll('button').forEach(b=> b.onclick = ()=>{
+    recipeServes = Math.max(1, Math.min(12, recipeServes + Number(b.dataset.d)));
+    setTimeout(renderRecipe, 0);
+  });
+  body.appendChild(meta);
+
+  const h1 = document.createElement('div'); h1.className='recipe-h'; h1.textContent='Ingredients · tap to tick off'; body.appendChild(h1);
+  const ul = document.createElement('ul'); ul.className = 'recipe-ing';
+  r.ingredients.forEach((ing, i)=>{
+    const li = document.createElement('li');
+    if(recipeGot.has(i)) li.className = 'got';
+    li.innerHTML = `<span class="q">${escapeHtml(scaledQty(ing))}</span><span>${escapeHtml(ing.item)}</span>`;
+    li.onclick = ()=>{ recipeGot.has(i) ? recipeGot.delete(i) : recipeGot.add(i); li.classList.toggle('got'); };
+    ul.appendChild(li);
+  });
+  body.appendChild(ul);
+
+  const h2 = document.createElement('div'); h2.className='recipe-h'; h2.textContent='Method'; body.appendChild(h2);
+  r.steps.forEach((st, i)=>{
+    const row = document.createElement('div'); row.className = 'recipe-step';
+    row.innerHTML = `<div class="recipe-step-n">${i+1}</div><div><div class="recipe-step-t">${escapeHtml(st.title)}</div><div class="recipe-step-x">${escapeHtml(st.text)}</div></div>`;
+    if(st.timer){
+      const btn = document.createElement('button'); btn.className = 'recipe-timer';
+      const paint = ()=>{
+        const t = recipeTimers[i];
+        if(!t){ btn.className='recipe-timer'; btn.textContent = `⏱ Start ${fmtTime(st.timer)}`; }
+        else if(t.left<=0){ btn.className='recipe-timer done'; btn.textContent = '✓ Done — tap to reset'; }
+        else { btn.className='recipe-timer running'; btn.textContent = `⏱ ${fmtTime(t.left)} — tap to stop`; }
+      };
+      btn.onclick = ()=>{
+        const t = recipeTimers[i];
+        if(t){ clearInterval(t.id); delete recipeTimers[i]; paint(); return; }
+        const tt = {left: st.timer, end: Date.now() + st.timer*1000};
+        tt.id = setInterval(()=>{
+          tt.left = Math.max(0, Math.round((tt.end - Date.now())/1000));
+          if(tt.left<=0){ clearInterval(tt.id); try{ navigator.vibrate && navigator.vibrate([300,150,300,150,300]); }catch(e){} }
+          if(document.body.contains(btn)) paint();
+        }, 1000);
+        recipeTimers[i] = tt; paint();
+      };
+      paint();
+      row.lastElementChild.appendChild(btn);
+    }
+    body.appendChild(row);
+  });
+
+  if(r.notes){ const n = document.createElement('div'); n.className='recipe-notes'; n.textContent = '💡 ' + r.notes; body.appendChild(n); }
+}
+
 function renderBankList(){
   const list = document.getElementById('bankList');
   list.innerHTML = '';
@@ -1305,7 +1495,7 @@ function renderBankList(){
       const pill = document.createElement('div');
       pill.className = 'bank-pill';
       pill.style.borderLeftColor = pillColor(m);
-      pill.textContent = m.name;
+      pill.textContent = m.recipe ? `${m.name} 📖` : m.name;
       pill.onclick = ()=>{
         if(bankExpanded.has(m.name)){ bankExpanded.delete(m.name); delete bankTagDraft[m.name]; }
         else { bankExpanded.add(m.name); bankTagDraft[m.name] = [...m.tags]; }

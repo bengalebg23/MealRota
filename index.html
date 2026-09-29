@@ -224,6 +224,15 @@
            with header dial; weeks A/B pre-filled with everything agreed during
            planning, C/D open except Saturday roast/lasagne alternation.
 
+  DEPLOYING CHANGES
+  - Claude CAN push directly to this repo when Ben's GitHub connection is
+    available in the chat (first done in v2.11.2). Try that first: attach
+    bengalebg23/MealRota with push access, commit, push to main. Pushing to
+    main goes live on GitHub Pages immediately, so ask Ben whether he'd
+    rather review on a branch for bigger changes.
+  - Fallback if push isn't available in a given chat: hand Ben the file
+    (version in the filename) and he updates the repo manually via Termux.
+
   LESSONS LEARNED (carried over from other apps in this family of tools)
   - Android doesn't overwrite same-named downloaded files, it appends a suffix
     (file-20.html etc) — always embed the version number in the filename.
@@ -240,7 +249,7 @@
     daily Cloud Scheduler trigger (18:00, Europe/London) that sends the push via
     FCM. Steps 2/3 are client code Claude can write directly into index.html;
     steps 1 and 4 need Ben to create the Firebase project and deploy the Cloud
-    Function himself (same credential limitation as GitHub push) — Claude can
+    Function himself (Firebase credentials aren't available to Claude) — Claude can
     write the Cloud Function code for him to deploy via Firebase CLI. Not started.
   - Weeks C and D are still mostly empty (only the Saturday roast/lasagne
     alternation is set).

@@ -28,6 +28,11 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.11.3 — Chicken mole is now a built-in meal bank entry (tea / chicken /
+           adults / quick, with shopping ingredients) so its recipe card is
+           always attached. Ben's phone-added custom "Chicken mole" never
+           showed the card, so he deleted it. Built-in is safer than relying
+           on the custom-meal name match.
   v2.11.2 — Chicken mole recipe replaced with Ben's quick 30-min one-pan
            version from chat (ancho powder, peanut butter, cocoa; smoked
            paprika + cayenne instead of chipotle), with wrap toppings in notes.
@@ -281,7 +286,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.11.2</title>
+<title>Meal Rota v2.11.3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -743,7 +748,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.11.2";
+const APP_VERSION = "2.11.3";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -773,6 +778,7 @@ const UNIFIED_MEALS = [
   {name:"Indian curry", tags:["tea","chicken","adults","medium","curry"], ingredients:["chicken breast","curry paste","chopped tomatoes","onion","rice","naan bread"]},
   {name:"Fajita + nachos", tags:["tea","chicken","adults","quick"], ingredients:["chicken breast","fajita seasoning","tortilla chips","cheese","salsa"]},
   {name:"Loaded nachos", tags:["tea","beef","adults","quick"], ingredients:["tortilla chips","minced beef","cheese","jalapeños","soured cream","salsa"]},
+  {name:"Chicken mole", tags:["tea","chicken","adults","quick"], ingredients:["chicken thighs","onion","garlic","ancho chilli powder","smoked paprika","cocoa powder","chopped tomatoes","chicken stock","peanut butter","mini wraps"]},
   {name:"Sourdough chicken kievs", tags:["tea","chicken","adults","medium"], ingredients:["chicken breasts","garlic butter","sourdough breadcrumbs","potatoes"]},
   {name:"Mushroom burgers", tags:["tea","veggie","adults","quick"], ingredients:["portobello mushrooms","burger buns","cheese","lettuce"]},
   {name:"Spinach ricotta pasta bake", tags:["tea","veggie","adults","medium","pasta","bake"], ingredients:["pasta","spinach","ricotta","passata","mozzarella"]},

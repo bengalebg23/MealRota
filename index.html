@@ -28,6 +28,9 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.11.2 — Chicken mole recipe replaced with Ben's quick 30-min one-pan
+           version from chat (ancho powder, peanut butter, cocoa; smoked
+           paprika + cayenne instead of chipotle), with wrap toppings in notes.
   v2.11.1 — recipe cards now also attach to meals Ben added himself on the
            phone (customMeals), matched to RECIPE_DATA by name ignoring
            case/spaces — previously only built-ins got them, which is why
@@ -269,7 +272,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.11.1</title>
+<title>Meal Rota v2.11.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -731,7 +734,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.11.1";
+const APP_VERSION = "2.11.2";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -1210,10 +1213,10 @@ const RECIPE_DATA = {
  i:[[200,"g","spaghetti"],[150,"g","bacon or pancetta, chopped"],[2,"","eggs"],[40,"g","parmesan, grated"],[null,"","black pepper"]],
  s:[["Cook the pasta","Cook the spaghetti. Save a mug of pasta water.",600],["Fry the bacon","Fry the bacon until crisp.",360],["Mix","Whisk the eggs with the parmesan and lots of pepper."],["Combine","Off the heat, toss the pasta with the bacon, then the egg mix, loosening with pasta water until silky."]]},
 
-"Chicken mole": {serves:4, time:"~50 min", intro:"Chicken in a rich, mild mole sauce with a hint of chocolate. Serve with rice or tortillas.",
- i:[[8,"","boneless chicken thighs"],[1,"","onion, chopped"],[3,"","garlic cloves, crushed"],[1,"tbsp","chipotle paste (less for the kids)"],[1,"tsp","ground cumin"],[0.5,"tsp","ground cinnamon"],[1,"tsp","dried oregano"],[400,"g","tin chopped tomatoes"],[250,"ml","chicken stock"],[2,"tbsp","smooth peanut butter"],[30,"g","dark chocolate"],[1,"tbsp","raisins (optional)"],[1,"tbsp","oil"],[300,"g","rice or 8 small tortillas"],[null,"","sesame seeds and coriander, to serve"]],
- s:[["Brown the chicken","Season the chicken and brown it in the oil. Lift it out.",480],["Soften the onion","Fry the onion until soft, then add the garlic, chipotle, cumin, cinnamon and oregano for a minute.",420],["Make the sauce","Add the tomatoes, stock, peanut butter and raisins and simmer, then blitz smooth with a stick blender.",600],["Finish the sauce","Stir in the chocolate until melted. It should be glossy and thick."],["Simmer the chicken","Return the chicken and simmer until cooked through and tender. Shred it if you're doing tacos.",1200],["Serve","Serve over rice or in tortillas, scattered with sesame seeds and coriander."]],
- notes:"Mild enough for the kids with just a little chipotle. Add hot sauce at the table for the adults. Freezes well."},
+"Chicken mole": {serves:4, time:"~30 min", intro:"Quick one-pan chicken mole. Chilli powder, peanut butter and cocoa stand in for the dried chillies, nuts and blending. Great in mini wraps.",
+ i:[[700,"g","boneless, skinless chicken thighs, cut into chunks"],[1,"","onion, finely chopped"],[3,"","garlic cloves, crushed"],[2,"tbsp","ancho chilli powder (or mild chilli powder)"],[0.5,"tsp","smoked paprika"],[null,"","pinch of cayenne or chilli flakes"],[1,"tsp","ground cumin"],[0.5,"tsp","ground cinnamon"],[1,"tbsp","cocoa powder"],[400,"g","tin chopped tomatoes"],[250,"ml","chicken stock"],[2,"tbsp","smooth peanut butter"],[2,"tsp","brown sugar"],[1,"tsp","salt"],[1,"tbsp","vegetable oil"],[1,"tbsp","sesame seeds, to garnish"],[null,"","mini wraps, to serve"]],
+ s:[["Brown the chicken","Heat the oil in a large frying pan. Season the chicken with half the salt and brown it all over.",360],["Soften the onion","Add the onion and garlic and cook until softened.",240],["Add the spices","Stir in the chilli powder, smoked paprika, cayenne, cumin, cinnamon and cocoa and cook for 30 seconds.",30],["Simmer","Add the tomatoes, stock, peanut butter, sugar and the rest of the salt. Stir until the peanut butter melts in, then simmer until the sauce thickens and the chicken is cooked through.",900],["Serve","Taste and add a little more sugar if it's harsh. Scatter with sesame seeds and spoon into mini wraps with your toppings."]],
+ notes:"Chipotle swap: ½ tsp smoked paprika + a pinch of cayenne replaces 1 tsp chipotle paste. Chocolate swap: 1 tbsp cocoa + extra sugar replaces 30 g dark chocolate (whisk the cocoa into the stock if it goes lumpy). For a smoother sauce, lift the chicken out, blitz with a stick blender, then put it back. Wrap toppings: quick pickled red onion (thin slices in lime juice + pinch of salt, 10 min), soured cream or crumbled feta, shredded lettuce, avocado, coriander, jalapeños, squeeze of lime."},
 
 "Carbonara + garlic bread": {serves:4, time:"~25 min", intro:"Family carbonara with garlic bread on the side.",
  i:[[350,"g","spaghetti"],[200,"g","bacon, chopped"],[3,"","eggs"],[60,"g","parmesan, grated"],[1,"","garlic baguette"]],

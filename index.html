@@ -28,6 +28,33 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.11.0 — photo banners for 50 of the recipe cards, hotlinked from
+           RecipeTin Eats (RECIPE_PHOTOS map, applied in applyRecipeData,
+           credited "Photo: RecipeTin Eats"). They're photos of a similar dish,
+           not always the exact recipe. Meals with no decent match (toast,
+           pâté, fish fingers etc.) have no photo; the banner just doesn't
+           show. Same rules as v2.8.1: needs signal, hides itself on failure.
+  v2.10.0 — recipe cards for every home-cooked built-in meal (62 new, 63 with the lamb).
+           Stored compactly in RECIPE_DATA (i=[qty,unit,item], s=[title,text,
+           timerSec]) and expanded onto UNIFIED_MEALS[].recipe at load. Skipped
+           on purpose: Karen's, Nursery, MIRA, Snack Attack, Dairylea Dunker,
+           Pizza pockets (not cooked at home). Family meals serve 4, adults-
+           only and kids-only meals serve 2, big bakes serve 6. qty null =
+           "to taste"/as needed (shown as "–"); kg quantities scale in 0.1s.
+           Recipes are best-guess standard UK versions tuned to the family's
+           notes (hidden-veg sauce, mild spice for kids) — edit as cooked.
+  v2.9.0 — Meal Bank is now fully editable: the expanded meal editor has a
+           Name field (rename) and a "Delete meal" button. Custom meals are
+           renamed/removed in place. Built-in UNIFIED_MEALS meals can't be
+           changed in the hardcoded array, so: delete → name goes into
+           hiddenMeals (localStorage mealrota_hidden_meals_v1) and allMeals()
+           filters it out; rename → the built-in's name goes into renamedMeals
+           (mealrota_renamed_meals_v1, also filtered, not restorable) and a custom copy
+           (tags, ingredients, note, recipe) is saved under the new name.
+           Renaming also updates any rota slots holding the old name. A
+           "N deleted meals · restore" link at the bottom of the bank brings
+           hidden built-ins back. Delete/rename work on the meal object itself,
+           so two meals with the same name are handled separately.
   v2.8.1 — recipe card shows a photo at the top when the recipe has
            `image` (web URL) — hotlinked, so it needs signal and relies on the
            source site keeping the file; if it fails to load the banner just
@@ -233,7 +260,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.8.1</title>
+<title>Meal Rota v2.11.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -555,6 +582,12 @@
   .recipe-open-btn{width:100%; background:var(--mustard); color:#fff; border:none; border-radius:8px;
     padding:9px 0; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer; margin-bottom:10px;}
 
+  .meal-name-input{width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--paper); font-family:'Inter',sans-serif; font-size:14px; font-weight:600; padding:8px;}
+  .meal-delete-btn{width:100%; background:none; color:var(--rose-dim); border:1px solid var(--rose-dim); border-radius:8px;
+    padding:8px 0; font-family:'Inter',sans-serif; font-weight:600; font-size:12.5px; cursor:pointer; margin-top:8px;}
+  .bank-restore{text-align:center; font-size:12px; color:var(--muted); padding:18px 8px 4px;}
+  .bank-restore button{background:none; border:none; color:var(--mustard); font-weight:600; font-size:12px; cursor:pointer; text-decoration:underline;}
   /* ── Shopping list tab ── */
   .shopping-controls{padding:14px 4px 4px;}
   .shopping-item{
@@ -689,7 +722,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.8.1";
+const APP_VERSION = "2.11.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -806,7 +839,42 @@ function loadCustomMeals(){
 }
 function saveCustomMeals(m){ try{ localStorage.setItem(CUSTOM_MEALS_KEY, JSON.stringify(m)); }catch(e){} }
 let customMeals = loadCustomMeals();
-function allMeals(){ return UNIFIED_MEALS.concat(customMeals); }
+const HIDDEN_MEALS_KEY = "mealrota_hidden_meals_v1";
+function loadHiddenMeals(){ try{ const raw = localStorage.getItem(HIDDEN_MEALS_KEY); if(raw) return JSON.parse(raw); }catch(e){} return []; }
+function saveHiddenMeals(){ try{ localStorage.setItem(HIDDEN_MEALS_KEY, JSON.stringify(hiddenMeals)); }catch(e){} }
+let hiddenMeals = loadHiddenMeals();
+// built-ins that were renamed (replaced by a custom copy) — hidden too, but not "restorable"
+const RENAMED_MEALS_KEY = "mealrota_renamed_meals_v1";
+let renamedMeals = (()=>{ try{ return JSON.parse(localStorage.getItem(RENAMED_MEALS_KEY)) || []; }catch(e){ return []; } })();
+function saveRenamedMeals(){ try{ localStorage.setItem(RENAMED_MEALS_KEY, JSON.stringify(renamedMeals)); }catch(e){} }
+function allMeals(){ return UNIFIED_MEALS.filter(m=> !hiddenMeals.includes(m.name) && !renamedMeals.includes(m.name)).concat(customMeals); }
+function isCustomMeal(m){ return customMeals.includes(m); }
+function deleteMeal(m){
+  if(isCustomMeal(m)){ customMeals.splice(customMeals.indexOf(m), 1); saveCustomMeals(customMeals); }
+  else if(!hiddenMeals.includes(m.name)){ hiddenMeals.push(m.name); saveHiddenMeals(); }
+}
+function renameInTemplate(oldName, newName){
+  let changed = false;
+  Object.values(template).forEach(wk=> Object.values(wk).forEach(day=>{
+    ['lunch','tea'].forEach(slot=> ['family','adults'].forEach(who=>{
+      if(day[slot] && day[slot][who] === oldName){ day[slot][who] = newName; changed = true; }
+    }));
+  }));
+  if(changed) saveTemplate(template);
+}
+// returns the meal object now carrying the new name
+function renameMeal(m, newName){
+  const oldName = m.name;
+  if(isCustomMeal(m)){ m.name = newName; saveCustomMeals(customMeals); renameInTemplate(oldName, newName); return m; }
+  const copy = {name:newName, tags:[...m.tags]};
+  if(m.ingredients) copy.ingredients = [...m.ingredients];
+  if(m.note) copy.note = m.note;
+  if(m.recipe) copy.recipe = JSON.parse(JSON.stringify(m.recipe));
+  customMeals.push(copy); saveCustomMeals(customMeals);
+  if(!renamedMeals.includes(oldName)){ renamedMeals.push(oldName); saveRenamedMeals(); }
+  renameInTemplate(oldName, newName);
+  return copy;
+}
 
 // edited tags for built-in UNIFIED_MEALS meals (can't be edited in place since
 // UNIFIED_MEALS is redefined fresh from the hardcoded array on every load) —
@@ -873,6 +941,332 @@ function updateMealIngredients(name, newIngredients){
   }
 }
 function ingredientsOf(m){ return m.ingredients || []; }
+
+// ── Built-in recipe cards (v2.10.0) ──
+// Compact format: i = [qty, unit, item] (unit "" = count, qty null = "to taste"),
+// s = [title, text, timerSeconds?]. Expanded into {ingredients, steps} at load.
+const RECIPE_DATA = {
+"Spaghetti Bolognese": {serves:4, time:"~45 min", intro:"Family bolognese with the veg blitzed into the sauce so it disappears.",
+ i:[[500,"g","beef mince"],[1,"","onion, chopped"],[1,"","carrot, grated"],[2,"","garlic cloves, crushed"],[400,"g","tin chopped tomatoes"],[2,"tbsp","tomato purée"],[1,"","beef stock cube"],[150,"ml","boiling water"],[1,"tsp","dried oregano"],[1,"tbsp","olive oil"],[350,"g","spaghetti"],[null,"","grated parmesan, to serve"]],
+ s:[["Soften the veg","Heat the oil and cook the onion and carrot until soft.",480],["Brown the mince","Add the mince and garlic and cook, breaking it up, until browned.",360],["Simmer the sauce","Stir in the tomatoes, purée, oregano, and the stock cube dissolved in the water. Simmer, lid half on. Blitz with a stick blender first if the kids will spot the veg.",1500],["Cook the pasta","Cook the spaghetti in salted boiling water.",600],["Serve","Toss the spaghetti through the sauce and top with parmesan."]],
+ notes:"Freezes well. Double the sauce and freeze half for a later week."},
+
+"Sausage potato bean": {serves:4, time:"~45 min", intro:"Oven sausages with crispy potatoes and beans. Proper comfort food.",
+ i:[[8,"","sausages"],[800,"g","potatoes, cut into chunks"],[2,"tbsp","oil"],[415,"g","tin baked beans"],[null,"","salt and pepper"]],
+ s:[["Heat the oven","Heat the oven to 200°C (180°C fan)."],["Roast the potatoes","Toss the potatoes in the oil and salt and roast on a tray.",900],["Add the sausages","Add the sausages to the tray and roast, turning once, until golden and cooked through.",1500],["Warm the beans","Heat the beans in a small pan.",240],["Serve","Plate up the sausages, potatoes and beans."]]},
+
+"Fish pie": {serves:6, time:"~1 hr 15 min", intro:"Creamy fish pie with a mash top. Makes enough for leftovers.",
+ i:[[1,"kg","potatoes, peeled and chunked"],[50,"g","butter (for the mash)"],[100,"ml","milk (for the mash)"],[400,"g","white fish fillets"],[200,"g","smoked haddock"],[500,"ml","milk (for the sauce)"],[40,"g","butter (for the sauce)"],[40,"g","plain flour"],[150,"g","frozen peas"],[1,"tbsp","chopped parsley"],[50,"g","cheddar, grated"]],
+ s:[["Boil the potatoes","Boil the potatoes until tender, then mash with the butter and milk.",1200],["Poach the fish","Put the fish in a pan with the sauce milk and simmer gently until just cooked. Lift out the fish and keep the milk.",480],["Make the sauce","Melt the butter, stir in the flour for 1 minute, then whisk in the poaching milk until thick and smooth.",300],["Assemble","Heat the oven to 200°C (180°C fan). Flake the fish into a dish with the peas and parsley. Pour over the sauce, spread the mash on top and sprinkle with cheese."],["Bake","Bake until golden and bubbling.",1800]],
+ notes:"Good Sunday cook. Leftovers cover Monday if the weekend goes sideways."},
+
+"Lasagne": {serves:6, time:"~2 hrs", intro:"From-scratch lasagne with the roasted-veg tomato sauce the kids don't notice.",
+ i:[[500,"g","beef mince"],[1,"","onion, chopped"],[1,"","carrot, chopped"],[1,"","celery stick, chopped"],[1,"","red pepper, chopped"],[1,"","courgette, chopped"],[2,"","garlic cloves"],[2,"","tins chopped tomatoes (400g)"],[2,"tbsp","tomato purée"],[1,"tbsp","olive oil"],[50,"g","butter"],[50,"g","plain flour"],[600,"ml","milk"],[100,"g","cheddar, grated"],[250,"g","lasagne sheets"]],
+ s:[["Roast the veg","Heat the oven to 200°C (180°C fan). Roast the onion, carrot, celery, pepper, courgette and garlic in the oil.",1800],["Blend the sauce","Blitz the roasted veg with the chopped tomatoes and purée until smooth."],["Make the ragu","Brown the mince in a large pan, then add the blended sauce and simmer.",1200],["Make the white sauce","Melt the butter, stir in the flour for 1 minute, then whisk in the milk until thick. Stir in half the cheese.",480],["Layer up","Layer ragu, lasagne sheets and white sauce twice more, finishing with white sauce and the rest of the cheese."],["Bake","Bake at 190°C (170°C fan) until golden and bubbling. Rest for 10 minutes before cutting.",2400]],
+ notes:"Make a double batch of the blended veg sauce. It's the same one used for sausage pasta."},
+
+"Fish cakes + wedges": {serves:4, time:"~35 min", intro:"Shop-bought fish cakes with homemade wedges and peas.",
+ i:[[4,"","fish cakes"],[800,"g","potatoes, cut into wedges"],[1,"tbsp","oil"],[1,"tsp","paprika (optional)"],[200,"g","frozen peas"]],
+ s:[["Start the wedges","Heat the oven to 200°C (180°C fan). Toss the wedges in the oil, salt and paprika and roast.",900],["Add the fish cakes","Add the fish cakes to the oven and cook until the wedges are crisp.",1200],["Cook the peas","Boil the peas.",180],["Serve","Plate up with ketchup or tartare sauce."]]},
+
+"Stir fry": {serves:4, time:"~20 min", intro:"Quick chicken noodle stir fry.",
+ i:[[3,"","chicken breasts, sliced"],[300,"g","pack stir fry veg"],[3,"","nests of egg noodles"],[3,"tbsp","soy sauce"],[1,"tbsp","honey"],[2,"","garlic cloves, crushed"],[1,"tsp","grated ginger"],[1,"tbsp","oil"]],
+ s:[["Cook the noodles","Cook the noodles, drain and toss with a little oil.",240],["Fry the chicken","Get a wok very hot, add the oil and stir-fry the chicken until cooked.",360],["Add the veg","Add the garlic, ginger and veg and stir-fry.",180],["Sauce it","Add the noodles, soy and honey and toss until hot and glossy.",60]]},
+
+"Tinga + rice": {serves:4, time:"~40 min", intro:"Smoky shredded chipotle chicken with rice.",
+ i:[[4,"","chicken breasts"],[1,"","onion, sliced"],[2,"","garlic cloves"],[2,"tbsp","chipotle paste"],[400,"g","tin chopped tomatoes"],[1,"tsp","dried oregano"],[1,"tbsp","oil"],[300,"g","long grain rice"],[null,"","soured cream and coriander, to serve"]],
+ s:[["Poach the chicken","Simmer the chicken in water until cooked, then shred with two forks.",1200],["Make the sauce","Fry the onion in the oil until soft, add the garlic, chipotle, tomatoes and oregano, and simmer.",600],["Combine","Stir the shredded chicken into the sauce.",300],["Cook the rice","Cook the rice as the pack says.",720],["Serve","Serve with soured cream. For the kids, go easy on the chipotle and add more for the adults."]]},
+
+"Cottage pie": {serves:6, time:"~1 hr 30 min", intro:"Classic cottage pie with a cheesy mash top.",
+ i:[[500,"g","beef mince"],[1,"","onion, chopped"],[2,"","carrots, finely diced"],[1,"tbsp","plain flour"],[1,"tbsp","tomato purée"],[1,"tbsp","Worcestershire sauce"],[1,"","beef stock cube"],[400,"ml","boiling water"],[100,"g","frozen peas"],[1,"kg","potatoes"],[50,"g","butter"],[50,"g","cheddar, grated"]],
+ s:[["Brown the mince","Brown the mince, then add the onion and carrots and cook until soft.",600],["Make the filling","Stir in the flour and purée, then add the Worcestershire sauce and stock. Simmer until thick, then stir in the peas.",1200],["Make the mash","Boil the potatoes until tender, then mash with the butter.",1200],["Assemble","Heat the oven to 200°C (180°C fan). Spoon the mince into a dish, top with the mash and cheese."],["Bake","Bake until golden.",1800]]},
+
+"Chicken & leek bake": {serves:4, time:"~50 min", intro:"Creamy chicken and leek under a cheesy potato top.",
+ i:[[4,"","chicken breasts, diced"],[2,"","leeks, sliced"],[200,"ml","crème fraîche"],[1,"tsp","wholegrain mustard"],[1,"","chicken stock cube"],[100,"ml","boiling water"],[800,"g","potatoes, thinly sliced"],[50,"g","cheddar, grated"],[1,"tbsp","oil"]],
+ s:[["Par-boil the potatoes","Boil the potato slices until just tender, then drain.",360],["Cook the chicken and leeks","Fry the chicken in the oil until golden, add the leeks and cook until soft.",600],["Make it creamy","Stir in the crème fraîche, mustard and stock and bubble briefly."],["Top and bake","Heat the oven to 200°C (180°C fan). Tip into a dish, layer the potatoes on top and sprinkle with cheese. Bake until golden.",1500]]},
+
+"Burgers": {serves:4, time:"~20 min", intro:"Beef burgers in buns with all the toppings.",
+ i:[[4,"","beef burgers"],[4,"","burger buns"],[4,"","cheese slices"],[null,"","lettuce, tomato and sauces"]],
+ s:[["Cook the burgers","Grill or fry the burgers, turning, until cooked through.",720],["Melt the cheese","Add the cheese slices for the last minute.",60],["Toast the buns","Toast the buns cut-side down."],["Build","Stack up the burgers with lettuce, tomato and sauces."]],
+ notes:"Serve with oven chips or wedges if you need more on the plate."},
+
+"Sausage orzo": {serves:4, time:"~30 min", intro:"One-pot sausage orzo in a tomato sauce.",
+ i:[[6,"","sausages, squeezed out of their skins"],[1,"","onion, chopped"],[2,"","garlic cloves"],[250,"g","orzo"],[400,"g","tin chopped tomatoes"],[500,"ml","chicken stock"],[80,"g","spinach"],[null,"","parmesan, to serve"]],
+ s:[["Brown the sausage","Fry the sausage meat in pieces until golden.",480],["Add the onion","Add the onion and garlic and cook until soft.",300],["Cook the orzo","Stir in the orzo, tomatoes and stock. Simmer, stirring often, until the orzo is tender.",720],["Finish","Stir in the spinach until it wilts and serve with parmesan."]]},
+
+"One pot garlic chicken": {serves:4, time:"~50 min", intro:"Chicken thighs, potatoes and garlic cooked in one pan.",
+ i:[[8,"","chicken thighs, skin on"],[600,"g","baby potatoes, halved"],[1,"","whole garlic bulb, cloves separated"],[300,"ml","chicken stock"],[1,"tsp","dried thyme"],[150,"g","green beans"],[1,"tbsp","oil"]],
+ s:[["Brown the chicken","Brown the thighs skin-side down in the oil in a large ovenproof pan.",480],["Add everything","Heat the oven to 200°C (180°C fan). Add the potatoes, garlic, thyme and stock around the chicken."],["Roast","Roast uncovered until the chicken is cooked and the skin is crisp.",2100],["Add the beans","Add the green beans for the last few minutes.",300]]},
+
+"Teriyaki skewers": {serves:4, time:"~35 min", intro:"Sticky teriyaki chicken skewers with rice.",
+ i:[[4,"","chicken breasts, cubed"],[6,"tbsp","teriyaki sauce"],[2,"","peppers, chunked"],[300,"g","rice"],[8,"","skewers"]],
+ s:[["Marinate","Toss the chicken in half the teriyaki sauce (longer is better if you have time).",900],["Skewer","Thread the chicken and peppers onto the skewers."],["Cook the rice","Cook the rice as the pack says.",720],["Grill","Grill the skewers, turning and brushing with the rest of the sauce, until cooked and sticky.",720]]},
+
+"Chilli": {serves:4, time:"~50 min", intro:"Beef chilli con carne with rice.",
+ i:[[500,"g","beef mince"],[1,"","onion, chopped"],[1,"","red pepper, chopped"],[2,"","garlic cloves"],[2,"tsp","chilli powder (mild)"],[1,"tsp","ground cumin"],[400,"g","tin chopped tomatoes"],[400,"g","tin kidney beans, drained"],[1,"","beef stock cube"],[150,"ml","boiling water"],[300,"g","rice"]],
+ s:[["Soften the veg","Fry the onion and pepper until soft.",360],["Brown the mince","Add the mince, garlic and spices and brown.",360],["Simmer","Add the tomatoes, beans and stock. Simmer, lid half on.",1500],["Cook the rice","Cook the rice as the pack says.",720]],
+ notes:"Keep it mild for the kids and add hot sauce at the table."},
+
+"Pizza": {serves:4, time:"~25 min", intro:"Homemade pizza with ready-made bases.",
+ i:[[2,"","large pizza bases"],[6,"tbsp","tomato pizza sauce"],[250,"g","mozzarella, torn or grated"],[null,"","toppings: ham, pepperoni, peppers, sweetcorn"]],
+ s:[["Heat the oven","Heat the oven to 220°C (200°C fan) with a tray inside."],["Top the pizzas","Spread over the sauce and add the cheese and toppings. Let the kids do their own."],["Bake","Bake until the base is crisp and the cheese is bubbling.",600]]},
+
+"Roast": {serves:4, time:"~2 hrs", intro:"Sunday roast chicken with all the trimmings.",
+ i:[[1.6,"kg","whole chicken"],[1,"kg","potatoes, peeled and halved"],[3,"","carrots"],[2,"","parsnips"],[1,"","head broccoli"],[4,"","Yorkshire puddings (frozen)"],[3,"tbsp","oil"],[4,"tbsp","gravy granules"]],
+ s:[["Roast the chicken","Heat the oven to 200°C (180°C fan). Rub the chicken with oil and salt and roast (about 20 min per 500g plus 20 min).",4800],["Par-boil the potatoes","Boil the potatoes, drain and fluff them up.",600],["Roast the potatoes","Tip the potatoes into a hot tray of oil and roast, turning halfway.",3000],["Roast the veg","Roast the carrots and parsnips in oil.",2400],["Rest and finish","Rest the chicken under foil. Cook the Yorkshires, steam the broccoli and make the gravy with the meat juices.",1200]],
+ notes:"For a joint of beef or pork, check the joint's own cooking times."},
+
+"Fajitas": {serves:4, time:"~25 min", intro:"Chicken fajitas with all the fillings. Friday Mexican night.",
+ i:[[3,"","chicken breasts, sliced"],[1,"","fajita seasoning pack"],[2,"","peppers, sliced"],[1,"","onion, sliced"],[8,"","tortilla wraps"],[1,"tbsp","oil"],[null,"","soured cream, salsa, grated cheese and lettuce"]],
+ s:[["Season","Toss the chicken in the seasoning."],["Fry the veg","Fry the peppers and onion in a hot pan until charred.",300],["Fry the chicken","Add the chicken and cook through.",480],["Warm the wraps","Warm the wraps in the microwave or a dry pan."],["Build","Put out the fillings and let everyone build their own."]]},
+
+"Tortellini": {serves:4, time:"~15 min", intro:"Fresh tortellini in a quick tomato sauce.",
+ i:[[2,"","packs fresh tortellini (300g)"],[500,"g","passata"],[1,"","garlic clove"],[1,"tbsp","olive oil"],[1,"tsp","dried basil"],[null,"","parmesan"]],
+ s:[["Make the sauce","Warm the garlic in the oil, add the passata and basil and simmer.",600],["Cook the pasta","Cook the tortellini as the pack says.",180],["Serve","Toss together and top with parmesan."]]},
+
+"Pulled pork fajitas": {serves:4, time:"~4 hrs (mostly hands-off)", intro:"Slow-cooked BBQ pulled pork in wraps.",
+ i:[[1,"kg","pork shoulder"],[1,"","onion, sliced"],[200,"ml","BBQ sauce"],[2,"tsp","smoked paprika"],[1,"tbsp","brown sugar"],[8,"","tortilla wraps"],[null,"","coleslaw and cheese"]],
+ s:[["Season","Rub the pork with the paprika, sugar and salt."],["Slow cook","Put the pork on the onion with half the BBQ sauce. Slow cook on low for 8 hours or oven-cook covered at 160°C (140°C fan).",12600],["Shred","Shred with forks and stir through the rest of the sauce."],["Serve","Serve in warm wraps with coleslaw."]],
+ notes:"Put it in the slow cooker in the morning. Leftovers freeze well."},
+
+"Tuna pasta": {serves:4, time:"~15 min", intro:"Quick tuna and sweetcorn mayo pasta. Works hot or cold.",
+ i:[[350,"g","pasta"],[2,"","tins tuna (145g), drained"],[198,"g","tin sweetcorn, drained"],[4,"tbsp","mayonnaise"],[50,"g","cheddar, grated (optional)"]],
+ s:[["Cook the pasta","Cook the pasta, drain and cool slightly.",600],["Mix","Stir through the tuna, sweetcorn and mayo."],["Serve","Top with cheese. Serve warm or chilled."]]},
+
+"Mozzarella melts": {serves:4, time:"~15 min", intro:"Toasted ciabatta with pesto, tomato and melting mozzarella.",
+ i:[[2,"","ciabatta loaves"],[4,"tbsp","pesto"],[2,"","tomatoes, sliced"],[250,"g","mozzarella, sliced"]],
+ s:[["Toast","Halve the ciabattas and toast the cut sides under the grill.",180],["Top","Spread with pesto and layer on the tomato and mozzarella."],["Melt","Grill until bubbling.",300]]},
+
+"Sausage and veg and potatoes": {serves:4, time:"~50 min", intro:"Sausage traybake with roast potatoes and veg.",
+ i:[[8,"","sausages"],[800,"g","potatoes, chunked"],[2,"","peppers, chunked"],[1,"","red onion, wedges"],[1,"","courgette, chunked"],[2,"tbsp","oil"],[1,"tsp","dried mixed herbs"]],
+ s:[["Start the potatoes","Heat the oven to 200°C (180°C fan). Roast the potatoes in the oil.",900],["Add the rest","Add the sausages, veg and herbs and toss.",0],["Roast","Roast, turning once, until golden and cooked.",1800]]},
+
+"Fish fingers and veg and beans": {serves:4, time:"~20 min", intro:"Fish fingers with beans and peas. The kids' classic.",
+ i:[[12,"","fish fingers"],[415,"g","tin baked beans"],[200,"g","frozen peas"]],
+ s:[["Cook the fish fingers","Oven-bake the fish fingers as the pack says.",1080],["Heat the sides","Warm the beans and boil the peas.",240],["Serve","Plate up."]]},
+
+"Laksa": {serves:2, time:"~30 min", intro:"Fragrant coconut chicken noodle soup.",
+ i:[[4,"","chicken thighs, sliced"],[3,"tbsp","laksa paste"],[400,"ml","tin coconut milk"],[400,"ml","chicken stock"],[150,"g","rice noodles"],[100,"g","beansprouts"],[1,"","lime"],[null,"","coriander and chilli, to serve"]],
+ s:[["Fry the paste","Fry the laksa paste for a minute until it smells good.",60],["Add the chicken","Add the chicken and coat in the paste.",180],["Simmer","Add the coconut milk and stock and simmer until the chicken is cooked.",720],["Noodles","Soak or cook the noodles as the pack says and divide between bowls.",300],["Serve","Ladle the soup over, top with beansprouts, coriander, chilli and lime."]]},
+
+"Thai curry": {serves:2, time:"~30 min", intro:"Thai green (or red) chicken curry.",
+ i:[[2,"","chicken breasts, sliced"],[2,"tbsp","Thai curry paste"],[400,"ml","tin coconut milk"],[100,"g","green beans"],[1,"tbsp","fish sauce"],[1,"","lime"],[150,"g","jasmine rice"]],
+ s:[["Fry the paste","Fry the paste in a splash of coconut milk.",60],["Cook the chicken","Add the chicken and cook until sealed.",240],["Simmer","Pour in the rest of the coconut milk and add the beans. Simmer.",600],["Rice","Cook the rice.",720],["Finish","Season with fish sauce and lime."]]},
+
+"Indian curry": {serves:2, time:"~35 min", intro:"Chicken curry from a paste, with rice and naan.",
+ i:[[2,"","chicken breasts, diced"],[1,"","onion, chopped"],[3,"tbsp","curry paste (tikka masala or similar)"],[400,"g","tin chopped tomatoes"],[100,"ml","single cream or yoghurt"],[150,"g","basmati rice"],[2,"","naan breads"],[1,"tbsp","oil"]],
+ s:[["Soften the onion","Fry the onion in the oil until soft.",480],["Add the paste and chicken","Add the paste, then the chicken, and cook until sealed.",300],["Simmer","Add the tomatoes and simmer.",900],["Rice and naan","Cook the rice and warm the naan.",720],["Finish","Stir in the cream."]]},
+
+"Fajita + nachos": {serves:2, time:"~20 min", intro:"Fajita chicken piled on cheesy nachos.",
+ i:[[2,"","chicken breasts, sliced"],[1,"tbsp","fajita seasoning"],[1,"","pepper, sliced"],[200,"g","tortilla chips"],[100,"g","cheddar, grated"],[null,"","salsa, soured cream and jalapeños"]],
+ s:[["Cook the chicken","Toss the chicken in the seasoning and fry with the pepper.",480],["Layer","Heat the oven to 200°C (180°C fan). Spread the chips on a tray, top with the chicken and cheese."],["Bake","Bake until the cheese melts.",420],["Top","Add the salsa, soured cream and jalapeños."]]},
+
+"Loaded nachos": {serves:2, time:"~25 min", intro:"Beef chilli nachos, fully loaded. Friday Mexican night.",
+ i:[[250,"g","beef mince"],[1,"tbsp","taco seasoning"],[200,"g","tortilla chips"],[120,"g","cheddar, grated"],[null,"","jalapeños, salsa, soured cream and guacamole"]],
+ s:[["Cook the mince","Brown the mince, add the seasoning and a splash of water and simmer.",480],["Layer","Heat the oven to 200°C (180°C fan). Layer the chips, mince and cheese on a tray."],["Bake","Bake until melted.",420],["Load up","Top with the jalapeños, salsa, soured cream and guac."]]},
+
+"Sourdough chicken kievs": {serves:2, time:"~45 min", intro:"Homemade kievs with a crunchy sourdough crumb.",
+ i:[[2,"","chicken breasts"],[60,"g","butter, softened"],[2,"","garlic cloves, crushed"],[1,"tbsp","chopped parsley"],[80,"g","sourdough breadcrumbs"],[1,"","egg, beaten"],[2,"tbsp","plain flour"],[400,"g","potatoes, cut into wedges"],[1,"tbsp","oil"]],
+ s:[["Garlic butter","Mash the butter with the garlic and parsley. Chill briefly.",600],["Stuff","Cut a deep pocket in each breast and fill with the butter."],["Crumb","Dip in the flour, then the egg, then the breadcrumbs."],["Bake","Heat the oven to 200°C (180°C fan). Bake with the wedges until the chicken is cooked through.",1800]]},
+
+"Mushroom burgers": {serves:2, time:"~20 min", intro:"Big garlicky portobello mushroom burgers.",
+ i:[[2,"","large portobello mushrooms"],[1,"","garlic clove, crushed"],[1,"tbsp","olive oil"],[2,"","burger buns"],[2,"","cheese slices"],[null,"","lettuce, tomato and mayo"]],
+ s:[["Season","Brush the mushrooms with the garlic oil and season."],["Cook","Grill or fry the mushrooms, turning, until juicy.",480],["Melt","Top with cheese to melt.",60],["Build","Build into the toasted buns."]]},
+
+"Spinach ricotta pasta bake": {serves:2, time:"~35 min", intro:"Creamy spinach and ricotta pasta bake.",
+ i:[[200,"g","pasta (penne or rigatoni)"],[200,"g","spinach"],[250,"g","ricotta"],[350,"g","passata"],[1,"","garlic clove"],[125,"g","mozzarella"],[25,"g","parmesan"]],
+ s:[["Cook the pasta","Cook the pasta until just under done.",540],["Wilt the spinach","Wilt the spinach and squeeze it dry."],["Mix","Mix the pasta with the passata, garlic, spinach and ricotta."],["Bake","Heat the oven to 200°C (180°C fan). Tip into a dish, top with the mozzarella and parmesan and bake.",1200]]},
+
+"Greek feta salad": {serves:2, time:"~10 min", intro:"Classic Greek salad. Add pitta or chicken to make it more filling.",
+ i:[[200,"g","feta"],[1,"","cucumber"],[250,"g","tomatoes"],[80,"g","Kalamata olives"],[0.5,"","red onion, thinly sliced"],[3,"tbsp","olive oil"],[1,"tbsp","red wine vinegar"],[1,"tsp","dried oregano"]],
+ s:[["Chop","Chop the cucumber and tomatoes into chunks."],["Assemble","Add the onion and olives and lay the feta on top."],["Dress","Drizzle with the oil and vinegar and sprinkle with oregano."]]},
+
+"Aioli roast veg + chorizo + potato": {serves:2, time:"~45 min", intro:"Chorizo and potato traybake with garlicky aioli.",
+ i:[[500,"g","baby potatoes, halved"],[150,"g","chorizo, sliced"],[1,"","red pepper"],[1,"","red onion"],[1,"","courgette"],[1,"tbsp","olive oil"],[3,"tbsp","garlic aioli"]],
+ s:[["Roast the potatoes","Heat the oven to 200°C (180°C fan). Roast the potatoes in the oil.",900],["Add the rest","Add the chopped veg and chorizo and toss in the oils."],["Roast","Roast until crisp.",1500],["Serve","Serve with dollops of aioli."]]},
+
+"Marry me chicken": {serves:2, time:"~30 min", intro:"Chicken in a creamy sun-dried tomato and parmesan sauce.",
+ i:[[2,"","chicken breasts"],[1,"tbsp","oil"],[2,"","garlic cloves"],[60,"g","sun-dried tomatoes, chopped"],[200,"ml","double cream"],[100,"ml","chicken stock"],[30,"g","parmesan, grated"],[1,"tsp","dried Italian herbs"],[null,"","basil, to serve"]],
+ s:[["Sear the chicken","Season and sear the chicken on both sides until golden.",600],["Make the sauce","Remove the chicken and fry the garlic and sun-dried tomatoes.",60],["Simmer","Add the cream, stock, parmesan and herbs, return the chicken and simmer until cooked.",720],["Serve","Top with basil. Good with pasta or mash."]]},
+
+"Marry me salmon": {serves:2, time:"~25 min", intro:"Salmon in a creamy sun-dried tomato and parmesan sauce.",
+ i:[[2,"","salmon fillets"],[1,"tbsp","oil"],[2,"","garlic cloves"],[60,"g","sun-dried tomatoes, chopped"],[200,"ml","double cream"],[30,"g","parmesan, grated"],[50,"g","spinach"]],
+ s:[["Sear the salmon","Sear the salmon skin-side down until crisp, flip, then remove.",360],["Make the sauce","Fry the garlic and sun-dried tomatoes, then add the cream and parmesan.",120],["Finish","Add the spinach, return the salmon and simmer until just cooked.",360]]},
+
+"Chicken Alfredo": {serves:2, time:"~20 min", intro:"Creamy chicken pasta the kids love.",
+ i:[[1,"","chicken breast, diced"],[150,"g","pasta (penne or tagliatelle)"],[150,"ml","double cream"],[30,"g","parmesan, grated"],[1,"","garlic clove"],[15,"g","butter"]],
+ s:[["Cook the pasta","Cook the pasta.",600],["Cook the chicken","Fry the chicken in the butter until cooked through.",480],["Sauce","Add the garlic and cream, bubble, then stir in the parmesan.",120],["Toss","Toss through the pasta with a splash of pasta water."]]},
+
+"Pitta pizza": {serves:2, time:"~12 min", intro:"Mini pizzas on pitta bread.",
+ i:[[2,"","pitta breads"],[3,"tbsp","tomato sauce or purée"],[60,"g","mozzarella or cheddar, grated"],[null,"","toppings: ham, sweetcorn"]],
+ s:[["Top","Spread the pittas with sauce and add the cheese and toppings."],["Grill","Grill or bake at 200°C (180°C fan) until bubbling.",420]]},
+
+"Fish fingers + wedges": {serves:2, time:"~30 min", intro:"Fish fingers and homemade wedges.",
+ i:[[8,"","fish fingers"],[400,"g","potatoes, cut into wedges"],[1,"tbsp","oil"]],
+ s:[["Start the wedges","Heat the oven to 200°C (180°C fan). Toss the wedges in the oil and roast.",900],["Add the fish fingers","Add the fish fingers.",1080]]},
+
+"Porridge fingers": {serves:2, time:"~30 min", intro:"Soft baked oat and banana fingers for little ones.",
+ i:[[100,"g","oats"],[1,"","ripe banana, mashed"],[1,"","egg"],[100,"ml","milk"]],
+ s:[["Mix","Heat the oven to 180°C (160°C fan). Mix everything together."],["Bake","Press into a lined small tin and bake until set.",1200],["Cool and cut","Cool slightly, then cut into fingers."]]},
+
+"Mac & cheese": {serves:2, time:"~25 min", intro:"Proper cheesy macaroni.",
+ i:[[150,"g","macaroni"],[25,"g","butter"],[25,"g","plain flour"],[350,"ml","milk"],[100,"g","cheddar, grated"]],
+ s:[["Cook the pasta","Cook the macaroni.",600],["Make the sauce","Melt the butter, stir in the flour, then whisk in the milk until thick.",360],["Add the cheese","Stir in most of the cheese until melted."],["Combine","Stir through the pasta. Top with the rest of the cheese and grill if you like.",240]]},
+
+"Pasta sauce": {serves:2, time:"~15 min", intro:"Pasta with tomato sauce. Use the hidden-veg sauce if you have some frozen.",
+ i:[[150,"g","pasta"],[250,"g","tomato pasta sauce (or frozen hidden-veg sauce)"],[null,"","grated cheese"]],
+ s:[["Cook the pasta","Cook the pasta.",600],["Heat the sauce","Warm the sauce.",300],["Serve","Toss together and top with cheese."]]},
+
+"Sandwich": {serves:4, time:"~10 min", intro:"Sandwiches, however you like them.",
+ i:[[8,"","slices of bread"],[null,"","butter"],[null,"","fillings: ham, cheese, tuna mayo, egg mayo"]],
+ s:[["Butter","Butter the bread."],["Fill","Add the fillings, close and cut."]]},
+
+"Salad pot": {serves:2, time:"~10 min", intro:"A quick lunch salad with protein.",
+ i:[[100,"g","mixed salad leaves"],[150,"g","cherry tomatoes"],[0.5,"","cucumber"],[200,"g","protein: chicken, tuna, egg or feta"],[2,"tbsp","dressing"]],
+ s:[["Chop","Chop the veg."],["Assemble","Layer the leaves, veg and protein."],["Dress","Dress just before eating."]]},
+
+"Pasta and sauce": {serves:4, time:"~15 min", intro:"Pasta and a quick sauce for lunch.",
+ i:[[300,"g","pasta"],[500,"g","tomato sauce or pesto"],[null,"","cheese"]],
+ s:[["Cook the pasta","Cook the pasta.",600],["Sauce","Warm the sauce and toss through."]]},
+
+"Pinwheels": {serves:4, time:"~10 min", intro:"Rolled-up wrap pinwheels. Good for lunchboxes.",
+ i:[[4,"","tortilla wraps"],[100,"g","cream cheese"],[8,"","slices of ham"],[40,"g","spinach leaves"]],
+ s:[["Spread","Spread each wrap with cream cheese."],["Fill and roll","Add the ham and spinach and roll up tightly."],["Slice","Chill briefly if you can, then slice into rounds."]]},
+
+"Quiche": {serves:6, time:"~1 hr", intro:"Bacon and cheese quiche. Good hot or cold.",
+ i:[[1,"","ready-rolled shortcrust pastry"],[150,"g","bacon lardons"],[3,"","eggs"],[300,"ml","milk or cream"],[100,"g","cheddar, grated"],[1,"","onion, chopped"]],
+ s:[["Blind bake","Heat the oven to 200°C (180°C fan). Line a tin with the pastry and blind bake.",900],["Fry the filling","Fry the bacon and onion.",480],["Fill","Scatter the filling and cheese in the case and pour over the eggs whisked with the milk."],["Bake","Bake at 180°C (160°C fan) until just set.",1800]]},
+
+"Soup": {serves:4, time:"~10 min", intro:"Soup and bread rolls.",
+ i:[[2,"","tins or cartons of soup (600g)"],[4,"","bread rolls"],[null,"","butter"]],
+ s:[["Heat","Warm the soup gently, stirring.",300],["Rolls","Warm the rolls in the oven.",300]]},
+
+"Fish finger sandwiches": {serves:4, time:"~20 min", intro:"Fish finger sandwiches with tartare sauce.",
+ i:[[12,"","fish fingers"],[8,"","slices of bread"],[4,"tbsp","tartare sauce or ketchup"],[null,"","lettuce"]],
+ s:[["Cook","Oven-bake the fish fingers.",1080],["Build","Butter the bread, add the sauce and lettuce, and fill with the fish fingers."]]},
+
+"Pâté": {serves:2, time:"~5 min", intro:"Pâté on crackers or toast.",
+ i:[[150,"g","pâté"],[1,"","pack of crackers"],[null,"","cornichons or chutney"]],
+ s:[["Serve","Spread the pâté on the crackers or toast with cornichons or chutney."]]},
+
+"Omelette": {serves:2, time:"~10 min", intro:"Cheese omelette, with fillings if you like.",
+ i:[[4,"","eggs"],[2,"tbsp","milk"],[40,"g","cheddar, grated"],[10,"g","butter"],[null,"","extras: ham, mushrooms"]],
+ s:[["Whisk","Whisk the eggs with the milk and season."],["Cook","Melt the butter in a frying pan and pour in the eggs, drawing in the edges as they set.",120],["Fill","Add the cheese, fold and serve.",60]]},
+
+"Scrambled eggs": {serves:4, time:"~10 min", intro:"Soft scrambled eggs on toast.",
+ i:[[6,"","eggs"],[3,"tbsp","milk"],[15,"g","butter"],[4,"","slices of bread"]],
+ s:[["Whisk","Whisk the eggs with the milk."],["Cook","Cook low and slow in the butter, stirring, until just set.",240],["Toast","Serve on buttered toast."]]},
+
+"Tortilla": {serves:2, time:"~10 min", intro:"Kids' filled wraps.",
+ i:[[2,"","tortilla wraps"],[null,"","fillings: cheese, ham, chicken"]],
+ s:[["Fill","Fill the wraps."],["Roll or toast","Roll up, or fold and toast in a dry pan so the cheese melts.",180]]},
+
+"PB toast": {serves:2, time:"~5 min", intro:"Peanut butter on toast.",
+ i:[[2,"","slices of bread"],[2,"tbsp","peanut butter"],[null,"","banana slices (optional)"]],
+ s:[["Toast","Toast the bread."],["Spread","Spread with peanut butter and top with banana."]]},
+
+"Avo toast": {serves:4, time:"~10 min", intro:"Smashed avocado on toast.",
+ i:[[2,"","ripe avocados"],[4,"","slices of sourdough"],[0.5,"","lemon"],[null,"","chilli flakes (adults)"]],
+ s:[["Smash","Mash the avocado with the lemon juice and salt."],["Toast","Toast the bread and spread with the avocado."],["Finish","Add the chilli flakes for the adults."]]},
+
+"Crumpets": {serves:2, time:"~5 min", intro:"Buttered crumpets.",
+ i:[[4,"","crumpets"],[null,"","butter"]],
+ s:[["Toast","Toast the crumpets.",240],["Butter","Butter while hot."]]},
+
+"Sausage pasta": {serves:4, time:"~40 min", intro:"Sausage pasta in the blended hidden-veg tomato sauce.",
+ i:[[6,"","sausages"],[1,"","onion"],[1,"","carrot"],[1,"","red pepper"],[2,"","garlic cloves"],[400,"g","tin chopped tomatoes"],[1,"tbsp","tomato purée"],[350,"g","pasta"],[1,"tbsp","oil"]],
+ s:[["Make the veg sauce","Soften the chopped onion, carrot, pepper and garlic in the oil, add the tomatoes and purée, simmer, then blitz smooth.",1200],["Cook the sausages","Fry or grill the sausages, then slice.",900],["Cook the pasta","Cook the pasta.",600],["Combine","Stir the sausages into the sauce and toss with the pasta."]],
+ notes:"Use frozen hidden-veg sauce from a lasagne batch to cut this down to 20 minutes."},
+
+"Chicken Kiev + wedges + sweetcorn": {serves:4, time:"~35 min", intro:"Oven kievs with wedges and sweetcorn.",
+ i:[[4,"","chicken kievs"],[800,"g","potatoes, cut into wedges"],[1,"tbsp","oil"],[200,"g","frozen sweetcorn"]],
+ s:[["Start the wedges","Heat the oven to 200°C (180°C fan). Roast the oiled wedges.",600],["Add the kievs","Add the kievs and cook as the pack says.",1500],["Sweetcorn","Boil the sweetcorn.",180]]},
+
+"Jar curry": {serves:2, time:"~30 min", intro:"Quick chicken curry from a jar.",
+ i:[[2,"","chicken breasts, diced"],[1,"","jar of curry sauce"],[150,"g","basmati rice"],[1,"tbsp","oil"],[null,"","naan or poppadoms"]],
+ s:[["Seal the chicken","Fry the chicken until sealed.",300],["Simmer","Add the sauce and simmer.",1200],["Rice","Cook the rice.",720]]},
+
+"Salmon teriyaki + wedges": {serves:2, time:"~35 min", intro:"Sticky teriyaki salmon with wedges.",
+ i:[[2,"","salmon fillets"],[4,"tbsp","teriyaki sauce"],[400,"g","potatoes, cut into wedges"],[1,"tbsp","oil"],[null,"","sesame seeds"]],
+ s:[["Wedges","Heat the oven to 200°C (180°C fan). Roast the oiled wedges.",1200],["Salmon","Brush the salmon with teriyaki and bake, basting halfway.",900],["Serve","Sprinkle with sesame seeds."]]},
+
+"Salmon teriyaki + rice + veg": {serves:2, time:"~25 min", intro:"Teriyaki salmon with rice and greens.",
+ i:[[2,"","salmon fillets"],[4,"tbsp","teriyaki sauce"],[150,"g","rice"],[200,"g","tenderstem broccoli or pak choi"],[null,"","sesame seeds"]],
+ s:[["Rice","Cook the rice.",720],["Salmon","Pan-fry the salmon, then add the teriyaki to glaze.",480],["Veg","Steam the greens.",240]]},
+
+"Bacon carbonara": {serves:2, time:"~20 min", intro:"Proper carbonara with no cream.",
+ i:[[200,"g","spaghetti"],[150,"g","bacon or pancetta, chopped"],[2,"","eggs"],[40,"g","parmesan, grated"],[null,"","black pepper"]],
+ s:[["Cook the pasta","Cook the spaghetti. Save a mug of pasta water.",600],["Fry the bacon","Fry the bacon until crisp.",360],["Mix","Whisk the eggs with the parmesan and lots of pepper."],["Combine","Off the heat, toss the pasta with the bacon, then the egg mix, loosening with pasta water until silky."]]},
+
+"Carbonara + garlic bread": {serves:4, time:"~25 min", intro:"Family carbonara with garlic bread on the side.",
+ i:[[350,"g","spaghetti"],[200,"g","bacon, chopped"],[3,"","eggs"],[60,"g","parmesan, grated"],[1,"","garlic baguette"]],
+ s:[["Garlic bread","Bake the garlic bread as the pack says.",720],["Cook the pasta","Cook the spaghetti. Save some pasta water.",600],["Fry the bacon","Fry the bacon until crisp.",360],["Combine","Off the heat, toss the pasta with the bacon and the eggs whisked with the parmesan. Loosen with pasta water."]]}
+};
+const RECIPE_PHOTOS = {
+  "Spaghetti Bolognese": "https://www.recipetineats.com/tachyon/2018/07/Spaghetti-Bolognese.jpg?resize=747%2C747",
+  "Fish pie": "https://www.recipetineats.com/tachyon/2018/03/Fish-Pie_2.jpg?resize=747%2C747",
+  "Cottage pie": "https://www.recipetineats.com/tachyon/2016/10/Cottage-Pie_5.jpg?resize=747%2C747",
+  "Fish cakes + wedges": "https://www.recipetineats.com/tachyon/2021/07/Fish-Cakes_96.jpg?resize=747%2C747",
+  "Stir fry": "https://www.recipetineats.com/tachyon/2017/06/Chicken-Stir-Fry-with-Rice-Noodles-4.jpg?resize=747%2C747",
+  "Tinga + rice": "https://www.recipetineats.com/tachyon/2021/10/Chicken-Tinga_900px.jpg?resize=747%2C747",
+  "Chicken & leek bake": "https://www.recipetineats.com/tachyon/2024/09/Chicken-and-Leek-Pie_9.jpg?resize=747%2C747",
+  "Burgers": "https://www.recipetineats.com/tachyon/2021/07/3-minute-Double-Smash-Burgers_900px.jpg?resize=747%2C747",
+  "One pot garlic chicken": "https://www.recipetineats.com/tachyon/2026/08/Portuguese-chicken-and-potatoes-2.jpg?resize=747%2C747",
+  "Lasagne": "https://www.recipetineats.com/tachyon/2026/05/One-pot-lasagna-with-layers-5-1.jpg?resize=747%2C747",
+  "Teriyaki skewers": "https://www.recipetineats.com/tachyon/2016/01/Honey-Sriracha-Glazed-Chicken-Skewers_1.jpg?resize=747%2C747",
+  "Chilli": "https://www.recipetineats.com/tachyon/2016/06/Chili-Con-Carne_8.jpg?resize=747%2C747",
+  "Pizza": "https://www.recipetineats.com/tachyon/2017/10/Homemade-Frozen-Pizza_2.jpg?resize=747%2C747",
+  "Roast": "https://www.recipetineats.com/tachyon/2021/06/Juiciest-easiest-Roast-Chicken_900px.jpg?resize=747%2C747",
+  "Fajitas": "https://www.recipetineats.com/tachyon/2017/04/Chicken-Fajitas_8.jpg?resize=747%2C747",
+  "Pulled pork fajitas": "https://www.recipetineats.com/tachyon/2019/11/Close-up-of-pulled-pork-with-BBQ-Sauce.jpg?resize=747%2C747",
+  "Tuna pasta": "https://www.recipetineats.com/tachyon/2023/04/Canned-tuna-pasta_0-copy.jpg?resize=747%2C747",
+  "Sausage and veg and potatoes": "https://www.recipetineats.com/tachyon/2025/06/Baked-breakfast-hash-sausage-potatoes_4.jpg?resize=747%2C747",
+  "Laksa": "https://www.recipetineats.com/tachyon/2016/09/Laksa.jpg?resize=747%2C747",
+  "Thai curry": "https://www.recipetineats.com/tachyon/2019/02/Thai-Green-Curry_5.jpg?resize=747%2C747",
+  "Indian curry": "https://www.recipetineats.com/tachyon/2018/04/Chicken-Tikka-Masala_0.jpg?resize=747%2C747",
+  "Fajita + nachos": "https://www.recipetineats.com/tachyon/2019/06/Chicken-Nachos_3.jpg?resize=747%2C747",
+  "Loaded nachos": "https://www.recipetineats.com/tachyon/2016/01/Beef-Nachos_2b.jpg?resize=747%2C747",
+  "Sourdough chicken kievs": "https://www.recipetineats.com/tachyon/2021/05/Chicken-Kiev_2-1.jpg?resize=747%2C747",
+  "Chicken Kiev + wedges + sweetcorn": "https://www.recipetineats.com/tachyon/2021/05/Chicken-Kiev_2-1.jpg?resize=747%2C747",
+  "Spinach ricotta pasta bake": "https://www.recipetineats.com/tachyon/2015/09/Spinach-Ricotta-Pasta-Bake_6.jpg?resize=747%2C747",
+  "Greek feta salad": "https://www.recipetineats.com/tachyon/2016/07/Greek-Salad_4.jpg?resize=747%2C747",
+  "Marry me chicken": "https://www.recipetineats.com/tachyon/2015/07/Chicken-with-Creamy-Sun-Dried-Tomato-Sauce_2.jpg?resize=747%2C747",
+  "Marry me salmon": "https://www.recipetineats.com/tachyon/2016/09/Creamy-Dill-Sauce-with-Salmon_5.jpg?resize=747%2C747",
+  "Chicken Alfredo": "https://www.recipetineats.com/tachyon/2017/03/One-Pot-Chicken-Alfredo-2.jpg?resize=747%2C747",
+  "Mac & cheese": "https://www.recipetineats.com/tachyon/2020/11/Baked-Mac-and-Cheese-pull-shot.jpg?resize=747%2C747",
+  "Pasta sauce": "https://www.recipetineats.com/tachyon/2025/08/Penne-alla-vodka_2.jpg?resize=747%2C747",
+  "Pasta and sauce": "https://www.recipetineats.com/tachyon/2025/08/Penne-alla-vodka_2.jpg?resize=747%2C747",
+  "Quiche": "https://www.recipetineats.com/tachyon/2019/09/Mini-Quiches-Featured-photo.jpg?resize=747%2C747",
+  "Omelette": "https://www.recipetineats.com/tachyon/2023/06/Ham-and-cheese-omelette_1.jpg?resize=747%2C747",
+  "Scrambled eggs": "https://www.recipetineats.com/tachyon/2020/07/Scrambled-Eggs_5.jpg?resize=747%2C747",
+  "Bacon carbonara": "https://www.recipetineats.com/tachyon/2023/01/Carbonara_6a.jpg?resize=747%2C747",
+  "Carbonara + garlic bread": "https://www.recipetineats.com/tachyon/2023/01/Carbonara_6a.jpg?resize=747%2C747",
+  "Salmon teriyaki + rice + veg": "https://www.recipetineats.com/tachyon/2022/07/Teriyaki-Salmon-Noodles_1-1.jpg?resize=747%2C747",
+  "Salmon teriyaki + wedges": "https://www.recipetineats.com/tachyon/2017/10/Lemon-Honey-Glazed-Salmon-4.jpg?resize=747%2C747",
+  "Sausage pasta": "https://www.recipetineats.com/tachyon/2017/08/Sausage-Pasta-3.jpg?resize=747%2C747",
+  "Sausage orzo": "https://www.recipetineats.com/tachyon/2020/06/Orecchiette-Sausage-in-Creamy-Tomato-Sauce_5.jpg?resize=747%2C747",
+  "Soup": "https://www.recipetineats.com/tachyon/2026/05/Chicken-sweet-corn-noodle-soup-0.jpg?resize=747%2C747",
+  "Jar curry": "https://www.recipetineats.com/tachyon/2019/03/Best-easy-Chicken-Curry_5.jpg?resize=747%2C747",
+  "Aioli roast veg + chorizo + potato": "https://www.recipetineats.com/tachyon/2021/07/Roasted-Vegetables_55.jpg?resize=747%2C747",
+  "Fish fingers + wedges": "https://www.recipetineats.com/tachyon/2015/05/Seasoned-Baked-Potato-Wedges_7.jpg?resize=747%2C747",
+  "Crumpets": "https://www.recipetineats.com/tachyon/2020/07/Crumpets-recipe_1.jpg?resize=747%2C747",
+  "Mozzarella melts": "https://www.recipetineats.com/tachyon/2023/07/Grilled-Cheese-sandwich-photo-main.jpg?resize=747%2C747",
+  "Salad pot": "https://www.recipetineats.com/tachyon/2026/08/Favourite-Cucumber-Salad-7.jpg?resize=747%2C747",
+  "Tortilla": "https://www.recipetineats.com/tachyon/2018/06/Quesadillas_9-1.jpg?resize=747%2C747"
+};
+(function applyRecipeData(){
+  UNIFIED_MEALS.forEach(m=>{
+    const d = RECIPE_DATA[m.name];
+    if(!d || m.recipe) return;
+    m.recipe = {
+      serves:d.serves, time:d.time, intro:d.intro, notes:d.notes,
+      ingredients: d.i.map(([qty,unit,item])=> ({qty, unit, item})),
+      steps: d.s.map(([title,text,timer])=> timer ? {title,text,timer} : {title,text})
+    };
+    if(RECIPE_PHOTOS[m.name]){ m.recipe.image = RECIPE_PHOTOS[m.name]; m.recipe.imageCredit = "Photo: RecipeTin Eats"; }
+  });
+})();
+
 
 /* ───────────────────────── Rota template data ───────────────────────── */
 const DAYS = [
@@ -1325,6 +1719,14 @@ function buildTagEditor(m){
     wrap.appendChild(recipeBtn);
   }
 
+  const nameGroup = document.createElement('div');
+  nameGroup.className = 'tag-editor-group';
+  nameGroup.innerHTML = `<div class="tag-editor-label">Name</div>`;
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text'; nameInput.className = 'meal-name-input'; nameInput.value = m.name;
+  nameGroup.appendChild(nameInput);
+  wrap.appendChild(nameGroup);
+
   if(m.note){
     const noteEl = document.createElement('div');
     noteEl.className = 'bank-pill-tags mono';
@@ -1381,14 +1783,37 @@ function buildTagEditor(m){
   saveBtn.className = 'tag-editor-save';
   saveBtn.textContent = 'Save';
   saveBtn.onclick = ()=>{
-    updateMealTags(m.name, [...draft]);
+    const oldName = m.name;
+    const newName = nameInput.value.trim();
     const ingredients = ingredientsBox.value.split('\n').map(s=>s.trim()).filter(Boolean);
-    updateMealIngredients(m.name, ingredients);
-    bankExpanded.delete(m.name);
-    delete bankTagDraft[m.name];
-    renderBankList();
+    let target = m;
+    if(newName && newName !== oldName){
+      if(allMeals().some(x=> x !== m && x.name.toLowerCase() === newName.toLowerCase())){
+        alert(`There's already a meal called "${newName}".`); return;
+      }
+      target = renameMeal(m, newName);
+    }
+    target.tags = [...draft];
+    target.ingredients = ingredients;
+    if(isCustomMeal(target)) saveCustomMeals(customMeals);
+    else { updateMealTags(target.name, [...draft]); updateMealIngredients(target.name, ingredients); }
+    bankExpanded.delete(oldName);
+    delete bankTagDraft[oldName];
+    setTimeout(renderBankList, 0);
   };
   wrap.appendChild(saveBtn);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'meal-delete-btn';
+  delBtn.textContent = 'Delete meal';
+  delBtn.onclick = ()=>{
+    if(!confirm(`Delete "${m.name}" from the meal bank?\n\nAny rota slots already set to it stay as they are.`)) return;
+    deleteMeal(m);
+    bankExpanded.delete(m.name);
+    delete bankTagDraft[m.name];
+    setTimeout(renderBankList, 0);
+  };
+  wrap.appendChild(delBtn);
 
   return wrap;
 }
@@ -1408,7 +1833,9 @@ function fmtQty(q){
 }
 function scaledQty(ing){
   const r = recipeMeal.recipe;
+  if(ing.qty == null) return '–';
   let q = ing.qty * recipeServes / r.serves;
+  if(ing.unit==='kg'){ return (Math.round(q*10)/10) + 'kg'; }
   if(ing.unit==='g' || ing.unit==='ml'){ q = q>=100 ? Math.round(q/25)*25 : Math.round(q/5)*5; return q + ing.unit; }
   const t = fmtQty(q);
   return ing.unit ? `${t} ${ing.unit}` : t;
@@ -1493,6 +1920,20 @@ function renderRecipe(){
 }
 
 function renderBankList(){
+  renderBankListInner();
+  const list = document.getElementById('bankList');
+  const hiddenCount = hiddenMeals.filter(n=> UNIFIED_MEALS.some(m=> m.name===n)).length;
+  if(hiddenCount){
+    const r = document.createElement('div'); r.className = 'bank-restore';
+    r.innerHTML = `${hiddenCount} deleted meal${hiddenCount>1?'s':''} · <button>restore</button>`;
+    r.querySelector('button').onclick = ()=>{
+      if(!confirm('Bring back all deleted built-in meals?')) return;
+      hiddenMeals = []; saveHiddenMeals(); setTimeout(renderBankList,0);
+    };
+    list.appendChild(r);
+  }
+}
+function renderBankListInner(){
   const list = document.getElementById('bankList');
   list.innerHTML = '';
 

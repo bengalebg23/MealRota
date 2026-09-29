@@ -28,6 +28,15 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.11.1 — recipe cards now also attach to meals Ben added himself on the
+           phone (customMeals), matched to RECIPE_DATA by name ignoring
+           case/spaces — previously only built-ins got them, which is why
+           his "Chicken mole" had none. Attached as a non-enumerable property
+           so it isn't frozen into localStorage (future recipe edits in
+           RECIPE_DATA still flow through); a renamed built-in's copied
+           recipe is enumerable and kept as-is. applyRecipeTo() runs inside
+           allMeals(), so a meal typed in later picks up its card instantly.
+           Added recipe + photo (wellplated.com): Chicken mole.
   v2.11.0 — photo banners for 50 of the recipe cards, hotlinked from
            RecipeTin Eats (RECIPE_PHOTOS map, applied in applyRecipeData,
            credited "Photo: RecipeTin Eats"). They're photos of a similar dish,
@@ -260,7 +269,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.11.0</title>
+<title>Meal Rota v2.11.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -722,7 +731,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.11.0";
+const APP_VERSION = "2.11.1";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -847,7 +856,7 @@ let hiddenMeals = loadHiddenMeals();
 const RENAMED_MEALS_KEY = "mealrota_renamed_meals_v1";
 let renamedMeals = (()=>{ try{ return JSON.parse(localStorage.getItem(RENAMED_MEALS_KEY)) || []; }catch(e){ return []; } })();
 function saveRenamedMeals(){ try{ localStorage.setItem(RENAMED_MEALS_KEY, JSON.stringify(renamedMeals)); }catch(e){} }
-function allMeals(){ return UNIFIED_MEALS.filter(m=> !hiddenMeals.includes(m.name) && !renamedMeals.includes(m.name)).concat(customMeals); }
+function allMeals(){ if(window.RECIPES_READY) customMeals.forEach(applyRecipeTo); return UNIFIED_MEALS.filter(m=> !hiddenMeals.includes(m.name) && !renamedMeals.includes(m.name)).concat(customMeals); }
 function isCustomMeal(m){ return customMeals.includes(m); }
 function deleteMeal(m){
   if(isCustomMeal(m)){ customMeals.splice(customMeals.indexOf(m), 1); saveCustomMeals(customMeals); }
@@ -865,7 +874,10 @@ function renameInTemplate(oldName, newName){
 // returns the meal object now carrying the new name
 function renameMeal(m, newName){
   const oldName = m.name;
-  if(isCustomMeal(m)){ m.name = newName; saveCustomMeals(customMeals); renameInTemplate(oldName, newName); return m; }
+  if(isCustomMeal(m)){
+    // keep an auto-matched recipe when the name changes (make it saveable)
+    if(m.recipe && !Object.keys(m).includes('recipe')){ const r = m.recipe; delete m.recipe; m.recipe = r; }
+    m.name = newName; saveCustomMeals(customMeals); renameInTemplate(oldName, newName); return m; }
   const copy = {name:newName, tags:[...m.tags]};
   if(m.ingredients) copy.ingredients = [...m.ingredients];
   if(m.note) copy.note = m.note;
@@ -1198,11 +1210,17 @@ const RECIPE_DATA = {
  i:[[200,"g","spaghetti"],[150,"g","bacon or pancetta, chopped"],[2,"","eggs"],[40,"g","parmesan, grated"],[null,"","black pepper"]],
  s:[["Cook the pasta","Cook the spaghetti. Save a mug of pasta water.",600],["Fry the bacon","Fry the bacon until crisp.",360],["Mix","Whisk the eggs with the parmesan and lots of pepper."],["Combine","Off the heat, toss the pasta with the bacon, then the egg mix, loosening with pasta water until silky."]]},
 
+"Chicken mole": {serves:4, time:"~50 min", intro:"Chicken in a rich, mild mole sauce with a hint of chocolate. Serve with rice or tortillas.",
+ i:[[8,"","boneless chicken thighs"],[1,"","onion, chopped"],[3,"","garlic cloves, crushed"],[1,"tbsp","chipotle paste (less for the kids)"],[1,"tsp","ground cumin"],[0.5,"tsp","ground cinnamon"],[1,"tsp","dried oregano"],[400,"g","tin chopped tomatoes"],[250,"ml","chicken stock"],[2,"tbsp","smooth peanut butter"],[30,"g","dark chocolate"],[1,"tbsp","raisins (optional)"],[1,"tbsp","oil"],[300,"g","rice or 8 small tortillas"],[null,"","sesame seeds and coriander, to serve"]],
+ s:[["Brown the chicken","Season the chicken and brown it in the oil. Lift it out.",480],["Soften the onion","Fry the onion until soft, then add the garlic, chipotle, cumin, cinnamon and oregano for a minute.",420],["Make the sauce","Add the tomatoes, stock, peanut butter and raisins and simmer, then blitz smooth with a stick blender.",600],["Finish the sauce","Stir in the chocolate until melted. It should be glossy and thick."],["Simmer the chicken","Return the chicken and simmer until cooked through and tender. Shred it if you're doing tacos.",1200],["Serve","Serve over rice or in tortillas, scattered with sesame seeds and coriander."]],
+ notes:"Mild enough for the kids with just a little chipotle. Add hot sauce at the table for the adults. Freezes well."},
+
 "Carbonara + garlic bread": {serves:4, time:"~25 min", intro:"Family carbonara with garlic bread on the side.",
  i:[[350,"g","spaghetti"],[200,"g","bacon, chopped"],[3,"","eggs"],[60,"g","parmesan, grated"],[1,"","garlic baguette"]],
  s:[["Garlic bread","Bake the garlic bread as the pack says.",720],["Cook the pasta","Cook the spaghetti. Save some pasta water.",600],["Fry the bacon","Fry the bacon until crisp.",360],["Combine","Off the heat, toss the pasta with the bacon and the eggs whisked with the parmesan. Loosen with pasta water."]]}
 };
 const RECIPE_PHOTOS = {
+  "Chicken mole": "https://www.wellplated.com/wp-content/uploads/2018/05/Instant-Pot-Shredded-Chicken-Mole-Tacos.jpg",
   "Spaghetti Bolognese": "https://www.recipetineats.com/tachyon/2018/07/Spaghetti-Bolognese.jpg?resize=747%2C747",
   "Fish pie": "https://www.recipetineats.com/tachyon/2018/03/Fish-Pie_2.jpg?resize=747%2C747",
   "Cottage pie": "https://www.recipetineats.com/tachyon/2016/10/Cottage-Pie_5.jpg?resize=747%2C747",
@@ -1254,18 +1272,28 @@ const RECIPE_PHOTOS = {
   "Salad pot": "https://www.recipetineats.com/tachyon/2026/08/Favourite-Cucumber-Salad-7.jpg?resize=747%2C747",
   "Tortilla": "https://www.recipetineats.com/tachyon/2018/06/Quesadillas_9-1.jpg?resize=747%2C747"
 };
-(function applyRecipeData(){
-  UNIFIED_MEALS.forEach(m=>{
-    const d = RECIPE_DATA[m.name];
-    if(!d || m.recipe) return;
-    m.recipe = {
-      serves:d.serves, time:d.time, intro:d.intro, notes:d.notes,
-      ingredients: d.i.map(([qty,unit,item])=> ({qty, unit, item})),
-      steps: d.s.map(([title,text,timer])=> timer ? {title,text,timer} : {title,text})
-    };
-    if(RECIPE_PHOTOS[m.name]){ m.recipe.image = RECIPE_PHOTOS[m.name]; m.recipe.imageCredit = "Photo: RecipeTin Eats"; }
-  });
-})();
+const RECIPE_KEY = n=> n.toLowerCase().replace(/\s+/g,' ').trim();
+const RECIPE_INDEX = {};
+Object.keys(RECIPE_DATA).forEach(n=> RECIPE_INDEX[RECIPE_KEY(n)] = n);
+function buildRecipe(name){
+  const d = RECIPE_DATA[name];
+  const r = {
+    serves:d.serves, time:d.time, intro:d.intro, notes:d.notes,
+    ingredients: d.i.map(([qty,unit,item])=> ({qty, unit, item})),
+    steps: d.s.map(([title,text,timer])=> timer ? {title,text,timer} : {title,text})
+  };
+  if(RECIPE_PHOTOS[name]){ r.image = RECIPE_PHOTOS[name]; r.imageCredit = "Photo: " + (RECIPE_PHOTOS[name].includes('wellplated') ? "Well Plated" : "RecipeTin Eats"); }
+  return r;
+}
+function applyRecipeTo(m){
+  if(m.recipe) return;
+  const key = RECIPE_INDEX[RECIPE_KEY(m.name)];
+  if(!key) return;
+  // non-enumerable: not saved into localStorage with custom meals
+  Object.defineProperty(m, 'recipe', {value: buildRecipe(key), writable:true, configurable:true, enumerable:false});
+}
+UNIFIED_MEALS.forEach(applyRecipeTo);
+window.RECIPES_READY = true;
 
 
 /* ───────────────────────── Rota template data ───────────────────────── */

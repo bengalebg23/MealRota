@@ -28,6 +28,13 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.12.0 — History tab: 14-day "logged?" grid above the log form. Four rows
+           (Day, Lunch, Kids tea, Adults tea) x 14 columns, today on the
+           right. Green = logged, red = blank. Tap any column to load that
+           date into the log form. Also: todayStr() now uses the LOCAL date
+           (was UTC via toISOString, so just after midnight in BST it pointed
+           at the previous day). Daily 8pm "log what you ate" reminder set up
+           as a phone alarm from chat (replaces the 6pm push idea below).
   v2.11.3 — Chicken mole is now a built-in meal bank entry (tea / chicken /
            adults / quick, with shopping ingredients) so its recipe card is
            always attached. Ben's phone-added custom "Chicken mole" never
@@ -245,7 +252,8 @@
     maintain (tags), the grid/UI around it is cheap to redo.
 
   OPEN THREADS / TODO
-  - PUSH NOTIFICATION (in progress): Ben wants a daily 6pm reminder to log what
+  - PUSH NOTIFICATION (parked): an 8pm daily phone alarm now covers the
+    reminder (v2.12.0). Original plan kept for reference: Ben wanted a daily 6pm reminder to log what
     was actually eaten (History tab). Chose the "real push notification" route
     over a simple in-app reminder. This needs: (1) a Firebase project with Cloud
     Messaging enabled, (2) a service worker registered client-side to receive
@@ -286,7 +294,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.11.3</title>
+<title>Meal Rota v2.12.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -677,6 +685,35 @@
     border-color:var(--mustard); box-shadow:0 0 0 2px var(--mustard-dim);
     transition:border-color .15s, box-shadow .15s;
   }
+  /* 14-day logged/not-logged grid */
+  .hist-grid-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:12px 10px 10px; margin:14px 4px 0;
+  }
+  .hist-grid-head{display:flex; justify-content:space-between; align-items:baseline; margin:0 2px 8px;}
+  .hist-grid-title{font-family:'Patrick Hand',cursive; font-size:17px;}
+  .hist-grid-score{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--muted);}
+  .hist-grid{
+    display:grid; grid-template-columns:52px repeat(14, minmax(0,1fr));
+    gap:3px; align-items:stretch;
+  }
+  .hist-grid-label{
+    font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); display:flex; align-items:center; line-height:1.1;
+  }
+  .hist-grid-day{
+    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--muted);
+    line-height:1.15; padding:2px 0; border-radius:5px; cursor:pointer;
+  }
+  .hist-grid-day b{display:block; font-size:11px; color:var(--paper); font-weight:600;}
+  .hist-grid-day.weekend b{color:var(--mustard);}
+  .hist-grid-day.today{background:var(--surface-2); outline:1.5px solid var(--paper-dim);}
+  .hist-grid-day.selected{outline:2px solid var(--mustard);}
+  .hist-cell{height:22px; border-radius:4px; cursor:pointer;}
+  .hist-cell.ok{background:#2FA84F;}
+  .hist-cell.miss{background:#D9483B;}
+  .hist-cell.today-col{box-shadow:inset 0 0 0 1.5px rgba(38,49,63,.35);}
+  .hist-cell.selected{box-shadow:inset 0 0 0 2px #fff, 0 0 0 2px var(--mustard);}
 
 </style>
 </head>
@@ -748,7 +785,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.11.3";
+const APP_VERSION = "2.12.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -2111,7 +2148,64 @@ let historyDayFilter = null; // e.g. 'mon' or null for all
 
 const SHORT_DAY = {mon:"Mon", tue:"Tue", wed:"Wed", thu:"Thu", fri:"Fri", sat:"Sat", sun:"Sun"};
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function localDateStr(dObj){
+  const y = dObj.getFullYear(), m = String(dObj.getMonth()+1).padStart(2,'0'), d = String(dObj.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+function todayStr(){ return localDateStr(new Date()); }
+
+/* 14-day grid: rows Day / Lunch / Kids tea / Adults tea, today right-most.
+   Green = logged, red = not. Tapping a column loads that date into the form. */
+const HIST_GRID_DAYS = 14;
+const HIST_GRID_ROWS = [
+  {field:'lunch',     label:'Lunch'},
+  {field:'teaKids',   label:'Kids tea'},
+  {field:'teaAdults', label:'Adults tea'},
+];
+function renderHistoryGrid(selectedDate){
+  const today = new Date(); today.setHours(12,0,0,0); // midday avoids DST edge cases
+  const dates = [];
+  for(let i=HIST_GRID_DAYS-1; i>=0; i--){
+    const d = new Date(today); d.setDate(today.getDate()-i);
+    dates.push(localDateStr(d));
+  }
+  const todayS = dates[dates.length-1];
+  let logged = 0;
+  const total = dates.length * HIST_GRID_ROWS.length;
+
+  let html = `<div class="hist-grid-label"></div>`;
+  dates.forEach(ds=>{
+    const dObj = new Date(ds+"T12:00:00");
+    const g = dObj.getDay();
+    const cls = ['hist-grid-day'];
+    if(g===0 || g===6) cls.push('weekend');
+    if(ds===todayS) cls.push('today');
+    if(ds===selectedDate) cls.push('selected');
+    html += `<div class="${cls.join(' ')}" data-date="${ds}">${dObj.toLocaleDateString('en-GB',{weekday:'narrow'})}<b>${dObj.getDate()}</b></div>`;
+  });
+  HIST_GRID_ROWS.forEach(row=>{
+    html += `<div class="hist-grid-label">${row.label}</div>`;
+    dates.forEach(ds=>{
+      const entry = history[ds];
+      const val = entry && entry[row.field] ? String(entry[row.field]).trim() : '';
+      if(val) logged++;
+      const cls = ['hist-cell', val ? 'ok' : 'miss'];
+      if(ds===todayS) cls.push('today-col');
+      if(ds===selectedDate) cls.push('selected');
+      const title = `${ds} ${row.label}: ${val || 'not logged'}`;
+      html += `<div class="${cls.join(' ')}" data-date="${ds}" title="${escapeHtml(title)}"></div>`;
+    });
+  });
+
+  return `
+    <div class="hist-grid-card">
+      <div class="hist-grid-head">
+        <span class="hist-grid-title">Last two weeks</span>
+        <span class="hist-grid-score">${logged}/${total} logged</span>
+      </div>
+      <div class="hist-grid" id="historyGrid">${html}</div>
+    </div>`;
+}
 function dayKeyForDateStr(dateStr){
   const dObj = new Date(dateStr+"T00:00:00");
   const g = dObj.getDay(); // 0 Sun..6 Sat
@@ -2123,7 +2217,7 @@ function renderHistoryView(){
   const editDate = historyEditDate || todayStr();
   const existing = history[editDate] || {lunch:'', teaAdults:'', teaKids:''};
 
-  view.innerHTML = `
+  view.innerHTML = renderHistoryGrid(editDate) + `
     <div class="history-log-card${historyEditDate ? ' editing' : ''}">
       <div class="history-log-title display">Log what you actually ate</div>
       <div class="history-date-row">
@@ -2150,6 +2244,12 @@ function renderHistoryView(){
   `;
 
   document.getElementById('histDate').onchange = (e)=>{ historyEditDate = e.target.value; renderHistoryView(); };
+  document.getElementById('historyGrid').onclick = (e)=>{
+    const t = e.target.closest('[data-date]');
+    if(!t) return;
+    const d = t.dataset.date;
+    setTimeout(()=>{ historyEditDate = (d===todayStr()) ? null : d; renderHistoryView(); }, 0);
+  };
   document.getElementById('histPrefill').onclick = ()=>{
     const d = document.getElementById('histDate').value;
     const {weekKey, dayKey} = weekAndDayForDate(d);

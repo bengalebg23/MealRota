@@ -28,6 +28,15 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.13.0 — History tab: after "Save this day", any logged meal that isn't
+           in the meal bank (name match ignoring case/extra spaces) pops up an
+           "Add to meal bank?" sheet, one ticked row per new meal. "Add ticked"
+           saves them as custom meals tagged from the field (Lunch → lunch +
+           everyone, Tea adults → tea + adults, Tea kids → tea + kids; same
+           name in both tea fields → tea + everyone). Unticked rows are
+           remembered (BANK_SKIP_KEY) and not asked about again, so things
+           like "leftovers" stop nagging. "Not now" closes without remembering.
+           The day is always saved first; the prompt never blocks the log.
   v2.12.0 — History tab: 14-day "logged?" grid above the log form. Four rows
            (Day, Lunch, Kids tea, Adults tea) x 14 columns, today on the
            right. Green = logged, red = blank. Tap any column to load that
@@ -294,7 +303,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.12.0</title>
+<title>Meal Rota v2.13.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -472,6 +481,24 @@
     font-family:'Inter',sans-serif; font-size:12px; color:var(--muted); cursor:pointer;
   }
   .sheet-savebank-row input{accent-color:var(--mustard); width:15px; height:15px;}
+  /* "add to meal bank?" prompt after logging (v2.13.0) */
+  .bankprompt-sheet{max-height:70vh;}
+  .bankprompt-note{font-size:12.5px; color:var(--muted); margin-bottom:10px; line-height:1.4;}
+  .bankprompt-list{overflow-y:auto; margin-bottom:14px;}
+  .bankprompt-row{
+    display:flex; align-items:center; gap:10px; padding:11px 10px; margin-bottom:6px;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px; cursor:pointer;
+  }
+  .bankprompt-row input{accent-color:var(--mustard); width:18px; height:18px; flex:none;}
+  .bankprompt-name{flex:1; font-size:14px; color:var(--paper);}
+  .bankprompt-tags{font-size:10.5px; color:var(--muted);}
+  .bankprompt-btns{display:flex; gap:8px;}
+  .bankprompt-btns button{
+    flex:1; border-radius:10px; padding:12px; font-family:'Inter',sans-serif;
+    font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .bankprompt-skip{background:var(--surface); color:var(--paper-dim); border:1px solid var(--line);}
+  .bankprompt-add{background:var(--mustard); color:#ffffff; border:none;}
   .freetext-suggestions{
     display:none; flex-direction:column; gap:4px; margin:-4px 0 10px;
   }
@@ -773,6 +800,22 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="bankPromptBackdrop">
+  <div class="sheet bankprompt-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title display">Add to meal bank?</div>
+      <button class="sheet-close" id="bankPromptClose">✕</button>
+    </div>
+    <div class="bankprompt-note">Saved. These aren't in the meal bank yet. Untick any you don't want; unticked ones won't be asked about again.</div>
+    <div class="bankprompt-list" id="bankPromptList"></div>
+    <div class="bankprompt-btns">
+      <button class="bankprompt-skip" id="bankPromptSkip">Not now</button>
+      <button class="bankprompt-add" id="bankPromptAdd">Add ticked</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="recipeBackdrop">
   <div class="sheet recipe-sheet">
     <div class="sheet-handle"></div>
@@ -785,7 +828,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.12.0";
+const APP_VERSION = "2.13.0";
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -2266,7 +2309,8 @@ function renderHistoryView(){
     if(!lunch && !teaAdults && !teaKids){ delete history[d]; } else { history[d] = {lunch, teaAdults, teaKids}; }
     saveHistory(history);
     historyEditDate = null;
-    renderHistoryView();
+    const newMeals = unbankedLoggedMeals({lunch, teaAdults, teaKids});
+    setTimeout(()=>{ renderHistoryView(); if(newMeals.length) openBankPrompt(newMeals); }, 0);
   };
   wireAutocomplete(
     document.getElementById('histLunch'),
@@ -2287,6 +2331,73 @@ function renderHistoryView(){
   renderHistoryDayChips();
   renderHistoryList();
 }
+
+/* ── "Add to meal bank?" prompt after logging (v2.13.0) ── */
+const BANK_SKIP_KEY = "mealrota_bank_prompt_skip_v1";
+let bankPromptSkip = (()=>{ try{ return JSON.parse(localStorage.getItem(BANK_SKIP_KEY)) || []; }catch(e){ return []; } })();
+function saveBankPromptSkip(){ try{ localStorage.setItem(BANK_SKIP_KEY, JSON.stringify(bankPromptSkip)); }catch(e){} }
+const mealKey = n=> String(n).toLowerCase().replace(/\s+/g,' ').trim();
+const LOG_FIELD_TAGS = { lunch:['lunch','everyone'], teaAdults:['tea','adults'], teaKids:['tea','kids'] };
+
+// logged meals with no bank match (and not previously skipped), one entry per name, tags from the field(s)
+function unbankedLoggedMeals(entry){
+  const bankKeys = new Set(allMeals().map(m=> mealKey(m.name)));
+  const byKey = new Map();
+  ['lunch','teaAdults','teaKids'].forEach(field=>{
+    const name = (entry[field] || '').trim();
+    if(!name) return;
+    const k = mealKey(name);
+    if(bankKeys.has(k) || bankPromptSkip.includes(k)) return;
+    if(!byKey.has(k)) byKey.set(k, {name, fields:[]});
+    byKey.get(k).fields.push(field);
+  });
+  return [...byKey.values()].map(item=>{
+    const f = item.fields;
+    let tags;
+    if(f.includes('lunch') && f.length > 1) tags = ['lunch','tea','everyone'];
+    else if(f.includes('teaAdults') && f.includes('teaKids')) tags = ['tea','everyone'];
+    else tags = [...LOG_FIELD_TAGS[f[0]]];
+    return {name:item.name, tags};
+  });
+}
+
+let bankPromptItems = [];
+function openBankPrompt(items){
+  bankPromptItems = items;
+  document.getElementById('bankPromptList').innerHTML = items.map((it, i)=>
+    `<label class="bankprompt-row">
+      <input type="checkbox" data-idx="${i}" checked>
+      <span class="bankprompt-name">${escapeHtml(it.name)}</span>
+      <span class="bankprompt-tags mono">${it.tags.join(' · ')}</span>
+    </label>`
+  ).join('');
+  document.getElementById('bankPromptBackdrop').classList.add('open');
+}
+function closeBankPrompt(){
+  document.getElementById('bankPromptBackdrop').classList.remove('open');
+  bankPromptItems = [];
+}
+document.getElementById('bankPromptAdd').onclick = ()=>{
+  const boxes = document.querySelectorAll('#bankPromptList input[type=checkbox]');
+  const bankKeys = new Set(allMeals().map(m=> mealKey(m.name)));
+  let added = false, skipped = false;
+  boxes.forEach(box=>{
+    const it = bankPromptItems[Number(box.dataset.idx)];
+    if(!it) return;
+    const k = mealKey(it.name);
+    if(box.checked){
+      if(!bankKeys.has(k)){ customMeals.push({name:it.name, tags:it.tags}); bankKeys.add(k); added = true; }
+    } else if(!bankPromptSkip.includes(k)){ bankPromptSkip.push(k); skipped = true; }
+  });
+  if(added) saveCustomMeals(customMeals);
+  if(skipped) saveBankPromptSkip();
+  closeBankPrompt();
+};
+document.getElementById('bankPromptSkip').onclick = closeBankPrompt;
+document.getElementById('bankPromptClose').onclick = closeBankPrompt;
+document.getElementById('bankPromptBackdrop').addEventListener('click', e=>{
+  if(e.target.id==='bankPromptBackdrop') closeBankPrompt();
+});
 
 function renderHistoryDayChips(){
   const row = document.getElementById('historyDayChips');

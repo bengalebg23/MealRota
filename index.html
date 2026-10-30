@@ -20,14 +20,25 @@
     salmon teriyaki, bacon carbonara, etc).
   - template object = the 4-week plan: template[weekKey][dayKey] = 
     { lunch:{family, adults}, tea:{family, adults}, adultsOpen }
-  - Persistence: localStorage only (STORE_KEY, ANCHOR_KEY). NOT synced across
-    devices yet — Firebase sync (like the Pokedex/House Ledger/Meal-planner
-    apps use) was deferred until this simpler shape was confirmed. Still open.
+  - Persistence: localStorage is the working copy; every save goes through
+    lsSet(), which mirrors the SYNC_KEYS to Firebase RTDB (project
+    meal-planner-f5ba2, reused from the legacy app) under mealrota/data.
+    Daily + first-sync safety copies under mealrota/backups. See the
+    "Cloud sync" block at the top of the script. Never call
+    localStorage.setItem directly for app data — use lsSet().
   - "Rota dial" in the header computes which week (A/B/C/D) you're actually
     in this week from an anchor Monday date, cycling automatically every 4
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.14.0 — Firebase cloud sync (after a phone's site data was cleared and the
+           whole rota was lost). All app data mirrors to RTDB mealrota/data and
+           syncs live between phones; changes from the other phone reload the
+           app once you're not mid-edit. A phone's first sync keeps a copy of
+           its own data in mealrota/backups/first-sync-* if it differs from the
+           cloud; a full copy is also kept daily in mealrota/backups/daily/.
+           Sync pill in the header (Synced / Saving / Offline / Sync error —
+           tap the error to see why). Needs a "mealrota" entry in the RTDB rules.
   v2.13.0 — History tab: after "Save this day", any logged meal that isn't
            in the meal bank (name match ignoring case/extra spaces) pops up an
            "Add to meal bank?" sheet, one ticked row per new meal. "Add ticked"
@@ -303,7 +314,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.13.0</title>
+<title>Meal Rota v2.14.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -365,6 +376,14 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     margin:0 0 9px;
   }
+  .badges{display:flex; align-items:center; gap:6px; flex:none;}
+  .sync-pill{
+    font-size:11px; font-weight:600; padding:4px 9px; border-radius:20px; cursor:pointer;
+    background:var(--surface); border:1px solid var(--line); color:var(--muted);
+  }
+  .sync-pill.ok{color:#2e8b57; border-color:#2e8b5766;}
+  .sync-pill.busy{color:var(--mustard); border-color:var(--mustard-dim);}
+  .sync-pill.err{color:var(--rose); border-color:var(--rose);}
   .version-badge{
     flex:none; font-size:11px; font-weight:600; color:var(--mustard);
     background:var(--surface); border:1px solid var(--mustard-dim);
@@ -750,7 +769,10 @@
   <p class="eyebrow">Family meal rota</p>
   <div class="title-row">
     <h1 class="title display">The Rotation</h1>
-    <span class="version-badge mono" id="versionBadge"></span>
+    <span class="badges">
+      <button class="sync-pill mono off" id="syncPill" type="button">Offline</button>
+      <span class="version-badge mono" id="versionBadge"></span>
+    </span>
   </div>
   <div class="dial-row">
     <div class="dial">
@@ -828,7 +850,162 @@
 </div>
 
 <script>
-const APP_VERSION = "2.13.0";
+const APP_VERSION = "2.14.0";
+
+/* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
+   Every synced localStorage key is mirrored to Firebase RTDB at
+   mealrota/data/<key without "mealrota_"> as {v: <the same JSON string>, t: ms}.
+   localStorage stays the working copy, so the app still loads offline.
+   Rules on a phone's first ever sync: cloud wins for keys it has, local is
+   uploaded for keys it lacks, and if anything differs the phone's own copy is
+   first saved to mealrota/backups/first-sync-<ms> so nothing is lost.
+   After that: keys changed locally while offline ("dirty") win over the cloud.
+   A full copy is also saved once a day to mealrota/backups/daily/<date>. */
+const FB_CONFIG = {
+  apiKey: "AIzaSyCJ2xKRzsh3kQNKzz47xCFzkuLijlNaI-U",
+  authDomain: "meal-planner-f5ba2.firebaseapp.com",
+  databaseURL: "https://meal-planner-f5ba2-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "meal-planner-f5ba2",
+  storageBucket: "meal-planner-f5ba2.firebasestorage.app",
+  messagingSenderId: "948462959670",
+  appId: "1:948462959670:web:1762c493da4670145cec97"
+};
+const FB_SDK = "https://www.gstatic.com/firebasejs/10.12.0/";
+const FB_DATA = "mealrota/data";
+const FB_BACKUPS = "mealrota/backups";
+const SYNC_KEYS = [
+  "mealrota_template_v1", "mealrota_anchor_v1", "mealrota_custom_meals_v1",
+  "mealrota_hidden_meals_v1", "mealrota_renamed_meals_v1", "mealrota_tag_overrides_v1",
+  "mealrota_ingredient_overrides_v1", "mealrota_history_v1",
+  "mealrota_bank_prompt_skip_v1", "mealrota_shopping_checked_v1"
+];
+const SYNC_LAST_KEY = "mealrota_sync_last_v1";   // set once this phone has synced at least once
+const SYNC_DIRTY_KEY = "mealrota_sync_dirty_v1"; // keys saved here but not yet confirmed in the cloud
+let fbDb = null, fbFns = null, syncReady = false, syncStarting = false;
+let syncFirstSnap = true, syncPendingReload = false, syncOnline = false, syncLastError = "";
+
+function fbKey(k){ return k.replace(/^mealrota_/, ""); }
+function syncDirty(){ try{ return JSON.parse(localStorage.getItem(SYNC_DIRTY_KEY)) || []; }catch(e){ return []; } }
+function syncSetDirty(arr){ try{ localStorage.setItem(SYNC_DIRTY_KEY, JSON.stringify(arr)); }catch(e){} }
+function syncLocalSnapshot(){
+  const out = {};
+  SYNC_KEYS.forEach(k=>{ const v = localStorage.getItem(k); if(v != null) out[fbKey(k)] = v; });
+  return out;
+}
+
+// All app saves go through here instead of localStorage.setItem.
+function lsSet(key, val){
+  localStorage.setItem(key, val);
+  if(!SYNC_KEYS.includes(key)) return;
+  if(localStorage.getItem(SYNC_LAST_KEY)){
+    const d = syncDirty(); if(!d.includes(key)){ d.push(key); syncSetDirty(d); }
+  }
+  if(syncReady) syncPush(key, val);
+}
+
+function syncPush(key, val){
+  const { ref, set } = fbFns;
+  set(ref(fbDb, FB_DATA + "/" + fbKey(key)), { v: val, t: Date.now() })
+    .then(()=>{
+      if(localStorage.getItem(key) === val) syncSetDirty(syncDirty().filter(k=> k !== key));
+      try{ localStorage.setItem(SYNC_LAST_KEY, String(Date.now())); }catch(e){}
+      syncLastError = ""; syncRenderStatus();
+    })
+    .catch(err=>{ syncLastError = String(err && err.message || err); syncRenderStatus(); });
+}
+
+function syncBusy(){
+  if(document.querySelector(".sheet-backdrop.open")) return true;
+  const a = document.activeElement;
+  return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+}
+function syncReloadWhenIdle(){
+  syncPendingReload = true; syncRenderStatus();
+  const tryIt = ()=>{ if(!syncBusy()) location.reload(); else setTimeout(tryIt, 1000); };
+  setTimeout(tryIt, 0);
+}
+
+function syncOnRemote(remote){
+  const changed = [];
+  if(syncFirstSnap){
+    syncFirstSnap = false;
+    const everSynced = !!localStorage.getItem(SYNC_LAST_KEY);
+    const dirty = everSynced ? syncDirty() : [];
+    if(!everSynced){
+      const local = syncLocalSnapshot();
+      const differs = Object.keys(local).some(k=> remote[k] && remote[k].v !== local[k]);
+      if(differs){
+        fbFns.set(fbFns.ref(fbDb, FB_BACKUPS + "/first-sync-" + Date.now()),
+          { t: Date.now(), ua: navigator.userAgent.slice(0, 120), data: local }).catch(()=>{});
+      }
+    }
+    syncReady = true;
+    SYNC_KEYS.forEach(k=>{
+      const r = remote[fbKey(k)], l = localStorage.getItem(k);
+      if(dirty.includes(k) || !r){ if(l != null) syncPush(k, l); }
+      else if(r.v !== l){ localStorage.setItem(k, r.v); changed.push(k); }
+    });
+    try{ localStorage.setItem(SYNC_LAST_KEY, String(Date.now())); }catch(e){}
+    syncDailyBackup();
+    if(changed.length) location.reload();
+    syncRenderStatus();
+    return;
+  }
+  SYNC_KEYS.forEach(k=>{
+    const r = remote[fbKey(k)];
+    if(r && r.v !== localStorage.getItem(k)){ localStorage.setItem(k, r.v); changed.push(k); }
+  });
+  if(changed.length) syncReloadWhenIdle();
+}
+
+function syncDailyBackup(){
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const r = fbFns.ref(fbDb, FB_BACKUPS + "/daily/" + day);
+  fbFns.get(r).then(s=>{
+    if(!s.exists()) return fbFns.set(r, { t: Date.now(), data: syncLocalSnapshot() });
+  }).catch(()=>{});
+}
+
+async function syncStart(){
+  if(fbDb || syncStarting) return;
+  syncStarting = true; syncRenderStatus();
+  try{
+    const [appMod, dbMod] = await Promise.all([
+      import(FB_SDK + "firebase-app.js"), import(FB_SDK + "firebase-database.js")
+    ]);
+    fbFns = dbMod;
+    fbDb = dbMod.getDatabase(appMod.initializeApp(FB_CONFIG, "mealrota"));
+  }catch(e){
+    syncStarting = false; syncRenderStatus(); return; // offline at launch; retried on 'online'
+  }
+  syncStarting = false;
+  fbFns.onValue(fbFns.ref(fbDb, ".info/connected"), s=>{ syncOnline = !!s.val(); syncRenderStatus(); });
+  fbFns.onValue(fbFns.ref(fbDb, FB_DATA),
+    snap=> syncOnRemote(snap.val() || {}),
+    err=>{ syncLastError = String(err && err.message || err); syncRenderStatus(); });
+}
+window.addEventListener("online", ()=> syncStart());
+
+function syncRenderStatus(){
+  const el = document.getElementById("syncPill");
+  if(!el) return;
+  let txt, cls;
+  if(syncLastError){ txt = "⚠ Sync error"; cls = "err"; }
+  else if(syncPendingReload){ txt = "↻ Updating"; cls = "busy"; }
+  else if(!fbDb){ txt = syncStarting ? "Connecting…" : "Offline"; cls = syncStarting ? "busy" : "off"; }
+  else if(!syncOnline){ txt = "Offline"; cls = "off"; }
+  else if(!syncReady){ txt = "Syncing…"; cls = "busy"; }
+  else { txt = syncDirty().length ? "Saving…" : "☁ Synced"; cls = syncDirty().length ? "busy" : "ok"; }
+  el.textContent = txt; el.className = "sync-pill mono " + cls;
+}
+function syncPillTap(){
+  if(syncLastError) alert("Cloud sync problem:\n\n" + syncLastError +
+    "\n\nIf it says permission denied, the Firebase rules need a \"mealrota\" entry.");
+  else if(syncPendingReload) location.reload();
+  else if(!fbDb) syncStart();
+}
+
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},
   {name:"Sausage potato bean", tags:["tea","pork","everyone","medium","one-pot"], ingredients:["sausages","potatoes","baked beans"]},
@@ -944,16 +1121,16 @@ function loadCustomMeals(){
   try{ const raw = localStorage.getItem(CUSTOM_MEALS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return [];
 }
-function saveCustomMeals(m){ try{ localStorage.setItem(CUSTOM_MEALS_KEY, JSON.stringify(m)); }catch(e){} }
+function saveCustomMeals(m){ try{ lsSet(CUSTOM_MEALS_KEY, JSON.stringify(m)); }catch(e){} }
 let customMeals = loadCustomMeals();
 const HIDDEN_MEALS_KEY = "mealrota_hidden_meals_v1";
 function loadHiddenMeals(){ try{ const raw = localStorage.getItem(HIDDEN_MEALS_KEY); if(raw) return JSON.parse(raw); }catch(e){} return []; }
-function saveHiddenMeals(){ try{ localStorage.setItem(HIDDEN_MEALS_KEY, JSON.stringify(hiddenMeals)); }catch(e){} }
+function saveHiddenMeals(){ try{ lsSet(HIDDEN_MEALS_KEY, JSON.stringify(hiddenMeals)); }catch(e){} }
 let hiddenMeals = loadHiddenMeals();
 // built-ins that were renamed (replaced by a custom copy) — hidden too, but not "restorable"
 const RENAMED_MEALS_KEY = "mealrota_renamed_meals_v1";
 let renamedMeals = (()=>{ try{ return JSON.parse(localStorage.getItem(RENAMED_MEALS_KEY)) || []; }catch(e){ return []; } })();
-function saveRenamedMeals(){ try{ localStorage.setItem(RENAMED_MEALS_KEY, JSON.stringify(renamedMeals)); }catch(e){} }
+function saveRenamedMeals(){ try{ lsSet(RENAMED_MEALS_KEY, JSON.stringify(renamedMeals)); }catch(e){} }
 function allMeals(){ if(window.RECIPES_READY) customMeals.forEach(applyRecipeTo); return UNIFIED_MEALS.filter(m=> !hiddenMeals.includes(m.name) && !renamedMeals.includes(m.name)).concat(customMeals); }
 function isCustomMeal(m){ return customMeals.includes(m); }
 function deleteMeal(m){
@@ -995,7 +1172,7 @@ function loadTagOverrides(){
   try{ const raw = localStorage.getItem(TAG_OVERRIDES_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return {}; // { mealName: tags[] }
 }
-function saveTagOverrides(o){ try{ localStorage.setItem(TAG_OVERRIDES_KEY, JSON.stringify(o)); }catch(e){} }
+function saveTagOverrides(o){ try{ lsSet(TAG_OVERRIDES_KEY, JSON.stringify(o)); }catch(e){} }
 let tagOverrides = loadTagOverrides();
 (function applyTagOverrides(){
   Object.keys(tagOverrides).forEach(name=>{
@@ -1028,7 +1205,7 @@ function loadIngredientOverrides(){
   try{ const raw = localStorage.getItem(INGREDIENT_OVERRIDES_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return {}; // { mealName: ingredients[] }
 }
-function saveIngredientOverrides(o){ try{ localStorage.setItem(INGREDIENT_OVERRIDES_KEY, JSON.stringify(o)); }catch(e){} }
+function saveIngredientOverrides(o){ try{ lsSet(INGREDIENT_OVERRIDES_KEY, JSON.stringify(o)); }catch(e){} }
 let ingredientOverrides = loadIngredientOverrides();
 (function applyIngredientOverrides(){
   Object.keys(ingredientOverrides).forEach(name=>{
@@ -1455,7 +1632,7 @@ function loadTemplate(){
   return JSON.parse(JSON.stringify(DEFAULT_TEMPLATE));
 }
 function saveTemplate(t){
-  try{ localStorage.setItem(STORE_KEY, JSON.stringify(t)); }catch(e){}
+  try{ lsSet(STORE_KEY, JSON.stringify(t)); }catch(e){}
 }
 function getAnchorMonday(){
   let a = localStorage.getItem(ANCHOR_KEY);
@@ -1466,7 +1643,7 @@ function getAnchorMonday(){
     const diff = (day===0? -6 : 1-day);
     const monday = new Date(now); monday.setDate(now.getDate()+diff);
     a = monday.toISOString().slice(0,10);
-    localStorage.setItem(ANCHOR_KEY, a);
+    lsSet(ANCHOR_KEY, a);
   }
   return new Date(a+"T00:00:00");
 }
@@ -2184,7 +2361,7 @@ function loadHistory(){
   }catch(e){}
   return {}; // { 'YYYY-MM-DD': {lunch:'', teaAdults:'', teaKids:''} }
 }
-function saveHistory(h){ try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }catch(e){} }
+function saveHistory(h){ try{ lsSet(HISTORY_KEY, JSON.stringify(h)); }catch(e){} }
 let history = loadHistory();
 let historyEditDate = null; // date currently loaded into the log form
 let historyDayFilter = null; // e.g. 'mon' or null for all
@@ -2335,7 +2512,7 @@ function renderHistoryView(){
 /* ── "Add to meal bank?" prompt after logging (v2.13.0) ── */
 const BANK_SKIP_KEY = "mealrota_bank_prompt_skip_v1";
 let bankPromptSkip = (()=>{ try{ return JSON.parse(localStorage.getItem(BANK_SKIP_KEY)) || []; }catch(e){ return []; } })();
-function saveBankPromptSkip(){ try{ localStorage.setItem(BANK_SKIP_KEY, JSON.stringify(bankPromptSkip)); }catch(e){} }
+function saveBankPromptSkip(){ try{ lsSet(BANK_SKIP_KEY, JSON.stringify(bankPromptSkip)); }catch(e){} }
 const mealKey = n=> String(n).toLowerCase().replace(/\s+/g,' ').trim();
 const LOG_FIELD_TAGS = { lunch:['lunch','everyone'], teaAdults:['tea','adults'], teaKids:['tea','kids'] };
 
@@ -2448,7 +2625,7 @@ function loadShoppingChecked(){
   try{ const raw = localStorage.getItem(SHOPPING_CHECKED_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return {}; // { itemTextLowercase: true }
 }
-function saveShoppingChecked(c){ try{ localStorage.setItem(SHOPPING_CHECKED_KEY, JSON.stringify(c)); }catch(e){} }
+function saveShoppingChecked(c){ try{ lsSet(SHOPPING_CHECKED_KEY, JSON.stringify(c)); }catch(e){} }
 let shoppingChecked = loadShoppingChecked();
 let shoppingWeek = WEEK_KEYS[currentWeekIndex()];
 
@@ -2562,6 +2739,9 @@ document.getElementById('versionBadge').textContent = `v${APP_VERSION}`;
 document.title = `Meal Rota v${APP_VERSION}`;
 renderHeader(); // dial + week tabs still needed even when History is the landing view
 renderHistoryView();
+document.getElementById('syncPill').onclick = syncPillTap;
+syncRenderStatus();
+syncStart();
 
 // PWA basics
 if('serviceWorker' in navigator){

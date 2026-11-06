@@ -31,6 +31,8 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.14.1 — Installable as a real app: manifest.json, PNG icons and a network-first
+           sw.js (before, Android could only make a Chrome shortcut).
   v2.14.0 — Firebase cloud sync (after a phone's site data was cleared and the
            whole rota was lost). All app data mirrors to RTDB mealrota/data and
            syncs live between phones; changes from the other phone reload the
@@ -314,7 +316,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.14.0</title>
+<title>Meal Rota v2.14.1</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -850,7 +854,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.14.0";
+const APP_VERSION = "2.14.1";
 
 /* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
    Every synced localStorage key is mirrored to Firebase RTDB at
@@ -2744,9 +2748,7 @@ syncRenderStatus();
 syncStart();
 
 // PWA basics
-if('serviceWorker' in navigator){
-  // no-op placeholder; add sw.js once hosted if offline caching wanted
-}
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script>
 </body>
 </html>

@@ -31,6 +31,10 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.15.0 — Cloud backups sheet: tap the "☁ Synced" pill to list every backup
+           in mealrota/backups (daily, first-sync, pre-restore) with its count of
+           planned meals and logged days, and restore one. The current state is
+           saved to backups/pre-restore-<ms> first so a restore can be undone.
   v2.14.2 — "Install app" button (shows only when Chrome says it can install).
   v2.14.1 — Installable as a real app: manifest.json, PNG icons and a network-first
            sw.js (before, Android could only make a Chrome shortcut).
@@ -317,7 +321,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.14.2</title>
+<title>Meal Rota v2.15.0</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -523,6 +527,19 @@
   }
   .bankprompt-skip{background:var(--surface); color:var(--paper-dim); border:1px solid var(--line);}
   .bankprompt-add{background:var(--mustard); color:#ffffff; border:none;}
+  /* cloud backups / restore (v2.15.0) */
+  .backup-row{
+    display:flex; align-items:center; gap:10px; padding:11px 10px; margin-bottom:6px;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+  }
+  .backup-info{flex:1; min-width:0;}
+  .backup-date{font-size:14px; color:var(--paper);}
+  .backup-meta{font-size:11px; color:var(--muted); margin-top:2px;}
+  .backup-row button{
+    flex:none; background:var(--mustard); color:#ffffff; border:none; border-radius:8px;
+    padding:8px 12px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
+  }
+  .backup-row button:disabled{opacity:.4; cursor:default;}
   .freetext-suggestions{
     display:none; flex-direction:column; gap:4px; margin:-4px 0 10px;
   }
@@ -803,7 +820,7 @@
 <main id="historyView"></main>
 <main id="shoppingView" style="display:none;"></main>
 
-<p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>saved on this device only</p>
+<p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>synced to the cloud · tap ☁ Synced for backups</p>
 
 <div class="sheet-backdrop" id="sheetBackdrop">
   <div class="sheet">
@@ -843,6 +860,18 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="backupBackdrop">
+  <div class="sheet bankprompt-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title display">Cloud backups</div>
+      <button class="sheet-close" id="backupClose">✕</button>
+    </div>
+    <div class="bankprompt-note">A full copy is saved the first time the app opens each day. Restoring replaces the rota, meal bank and history on every phone — what's there now is kept as a backup first, so you can undo.</div>
+    <div class="bankprompt-list" id="backupList"></div>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="recipeBackdrop">
   <div class="sheet recipe-sheet">
     <div class="sheet-handle"></div>
@@ -855,7 +884,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.14.2";
+const APP_VERSION = "2.15.0";
 
 /* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
    Every synced localStorage key is mirrored to Firebase RTDB at
@@ -1009,7 +1038,80 @@ function syncPillTap(){
     "\n\nIf it says permission denied, the Firebase rules need a \"mealrota\" entry.");
   else if(syncPendingReload) location.reload();
   else if(!fbDb) syncStart();
+  else openBackups();
 }
+
+/* ── Cloud backups / restore (v2.15.0) ──
+   Lists mealrota/backups (daily/<date>, first-sync-<ms>, pre-restore-<ms>),
+   shows how many rota slots each holds, and restores one. The current state
+   is saved to backups/pre-restore-<ms> first, so a restore can be undone. */
+function backupSlotCount(data){
+  try{
+    const t = JSON.parse(data && data.template_v1);
+    let n = 0;
+    Object.values(t||{}).forEach(w=> Object.values(w||{}).forEach(d=>{
+      ["lunch","tea"].forEach(s=>{ if(d && d[s]){ if(d[s].family) n++; if(d[s].adults) n++; } });
+    }));
+    return n;
+  }catch(e){ return 0; }
+}
+function backupHistoryCount(data){
+  try{ const h = JSON.parse(data && data.history_v1); return Array.isArray(h) ? h.length : Object.keys(h||{}).length; }catch(e){ return 0; }
+}
+let backupEntries = [];
+async function openBackups(){
+  const list = document.getElementById('backupList');
+  list.innerHTML = '<div class="bankprompt-note">Loading…</div>';
+  document.getElementById('backupBackdrop').classList.add('open');
+  try{
+    const snap = await fbFns.get(fbFns.ref(fbDb, FB_BACKUPS));
+    const all = snap.val() || {};
+    const entries = [];
+    Object.entries(all.daily || {}).forEach(([day, b])=> entries.push({path:"daily/"+day, label:new Date(b.t||day).toLocaleDateString('en-GB',{weekday:'short', day:'numeric', month:'short', year:'numeric'}), kind:"daily", b}));
+    Object.entries(all).forEach(([k, b])=>{
+      if(k === "daily" || !b || !b.data) return;
+      const kind = k.startsWith("pre-restore") ? "before a restore" : k.startsWith("first-sync") ? "phone's first sync" : k;
+      entries.push({path:k, label:new Date(b.t).toLocaleString('en-GB',{weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}), kind, b});
+    });
+    entries.sort((x,y)=> (y.b.t||0) - (x.b.t||0));
+    backupEntries = entries;
+    const current = backupSlotCount(syncLocalSnapshot());
+    list.innerHTML = `<div class="bankprompt-note">On this phone now: <b>${current}</b> planned meals.</div>` +
+      (entries.length ? entries.map((e, i)=>{
+        const n = backupSlotCount(e.b.data), h = backupHistoryCount(e.b.data);
+        return `<div class="backup-row"><div class="backup-info"><div class="backup-date">${e.label}</div>
+          <div class="backup-meta">${e.kind} · ${n} planned meals · ${h} logged days</div></div>
+          <button data-idx="${i}" ${e.b.data ? '' : 'disabled'}>Restore</button></div>`;
+      }).join('') : '<div class="bankprompt-note">No backups found.</div>');
+    list.querySelectorAll('button[data-idx]').forEach(btn=> btn.onclick = ()=> restoreBackup(backupEntries[Number(btn.dataset.idx)]));
+  }catch(err){
+    list.innerHTML = `<div class="bankprompt-note">Couldn't load backups: ${String(err && err.message || err)}</div>`;
+  }
+}
+async function restoreBackup(e){
+  const n = backupSlotCount(e.b.data);
+  if(!confirm(`Restore the backup from ${e.label} (${n} planned meals)?\n\nThis replaces what's on every phone. The current version is kept as a backup.`)) return;
+  try{
+    await fbFns.set(fbFns.ref(fbDb, FB_BACKUPS + "/pre-restore-" + Date.now()),
+      { t: Date.now(), ua: navigator.userAgent.slice(0, 120), data: syncLocalSnapshot() });
+    const pushes = [];
+    SYNC_KEYS.forEach(k=>{
+      const v = e.b.data[fbKey(k)];
+      if(v == null) return;
+      localStorage.setItem(k, v);
+      pushes.push(fbFns.set(fbFns.ref(fbDb, FB_DATA + "/" + fbKey(k)), { v, t: Date.now() }));
+    });
+    await Promise.all(pushes);
+    alert("Restored. Reloading…");
+    location.reload();
+  }catch(err){
+    alert("Restore may not have finished — check your signal and try again.\n\n" + String(err && err.message || err));
+  }
+}
+document.getElementById('backupClose').onclick = ()=> document.getElementById('backupBackdrop').classList.remove('open');
+document.getElementById('backupBackdrop').addEventListener('click', ev=>{
+  if(ev.target.id === 'backupBackdrop') document.getElementById('backupBackdrop').classList.remove('open');
+});
 
 const UNIFIED_MEALS = [
   {name:"Spaghetti Bolognese", tags:["tea","beef","everyone","medium","pasta"], ingredients:["spaghetti","minced beef","onion","garlic","chopped tomatoes","tomato purée","carrot","beef stock cube"]},

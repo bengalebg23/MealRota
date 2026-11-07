@@ -31,6 +31,10 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.17.0 — Shopping tab: week chips are multi-select, so one list can combine
+           meals from several weeks (e.g. end of B + most of C). Each selected
+           week gets its own meal list with All / None (/ Today on) chips.
+           Selected weeks stored in mealrota_shopping_weeks_v1 (synced).
   v2.16.0 — Shopping tab: pick which planned meals you're shopping for (for
            midweek shops). Tick/untick meals under the week chips, or use the
            All / None / Today on chips. Unticked slots are stored per week in
@@ -325,7 +329,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.16.0</title>
+<title>Meal Rota v2.17.0</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -711,7 +715,8 @@
   .shopping-meal{padding:7px 12px; margin-bottom:4px;}
   .shopping-meal-when{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; flex:none; width:78px;}
   .shopping-meal:not(.on) .shopping-item-label{color:var(--muted);}
-  .shopping-quick{display:flex; gap:6px; margin:0 4px 8px;}
+  .shopping-week-head{display:flex; align-items:center; gap:6px; margin:12px 4px 6px;}
+  .shopping-week-name{font-family:'Patrick Hand',cursive; font-size:18px; color:var(--paper); margin-right:auto;}
   .shopping-clear-btn{
     font-family:'Inter',sans-serif; font-size:12px; font-weight:600; color:var(--rose);
     background:none; border:1px solid var(--rose-dim); border-radius:8px; padding:6px 12px; cursor:pointer;
@@ -892,7 +897,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.16.0";
+const APP_VERSION = "2.17.0";
 
 /* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
    Every synced localStorage key is mirrored to Firebase RTDB at
@@ -920,7 +925,7 @@ const SYNC_KEYS = [
   "mealrota_hidden_meals_v1", "mealrota_renamed_meals_v1", "mealrota_tag_overrides_v1",
   "mealrota_ingredient_overrides_v1", "mealrota_history_v1",
   "mealrota_bank_prompt_skip_v1", "mealrota_shopping_checked_v1",
-  "mealrota_shopping_skip_v1"
+  "mealrota_shopping_skip_v1", "mealrota_shopping_weeks_v1"
 ];
 const SYNC_LAST_KEY = "mealrota_sync_last_v1";   // set once this phone has synced at least once
 const SYNC_DIRTY_KEY = "mealrota_sync_dirty_v1"; // keys saved here but not yet confirmed in the cloud
@@ -2743,7 +2748,16 @@ function loadShoppingChecked(){
 }
 function saveShoppingChecked(c){ try{ lsSet(SHOPPING_CHECKED_KEY, JSON.stringify(c)); }catch(e){} }
 let shoppingChecked = loadShoppingChecked();
-let shoppingWeek = WEEK_KEYS[currentWeekIndex()];
+const SHOPPING_WEEKS_KEY = "mealrota_shopping_weeks_v1";
+function loadShoppingWeeks(){
+  try{
+    const raw = localStorage.getItem(SHOPPING_WEEKS_KEY);
+    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr)) return arr.filter(w=> WEEK_KEYS.includes(w)); }
+  }catch(e){}
+  return [WEEK_KEYS[currentWeekIndex()]];
+}
+function saveShoppingWeeks(){ try{ lsSet(SHOPPING_WEEKS_KEY, JSON.stringify(shoppingWeeks)); }catch(e){} }
+let shoppingWeeks = loadShoppingWeeks(); // weeks being shopped for, kept in A-D order
 
 const SHOPPING_SKIP_KEY = "mealrota_shopping_skip_v1";
 function loadShoppingSkip(){
@@ -2766,11 +2780,15 @@ function plannedSlots(weekKey){
   return slots;
 }
 
-function buildShoppingList(weekKey){
-  const skip = new Set(shoppingSkip[weekKey] || []);
+// Ticked meals across every selected week, merged into one ingredient list.
+function buildShoppingList(weekKeys){
   const mealNames = new Set();
-  plannedSlots(weekKey).forEach(slot=>{
-    if(!skip.has(slot.id)) mealNames.add(slot.name);
+  let mealSlots = 0;
+  weekKeys.forEach(wk=>{
+    const skip = new Set(shoppingSkip[wk] || []);
+    plannedSlots(wk).forEach(slot=>{
+      if(!skip.has(slot.id)){ mealNames.add(slot.name); mealSlots++; }
+    });
   });
 
   const ingredientMap = new Map(); // lowercase -> original-case display text
@@ -2789,28 +2807,24 @@ function buildShoppingList(weekKey){
   });
 
   const items = [...ingredientMap.values()].sort((a,b)=> a.localeCompare(b));
-  return { items, missingIngredients, unmatchedMeals, mealCount: mealNames.size };
+  return { items, missingIngredients, unmatchedMeals, mealSlots };
 }
 
 function renderShoppingView(){
   const view = document.getElementById('shoppingView');
-  const { items, missingIngredients, unmatchedMeals, mealCount } = buildShoppingList(shoppingWeek);
-  const slots = plannedSlots(shoppingWeek);
-  const skip = new Set(shoppingSkip[shoppingWeek] || []);
-  const selectedSlots = slots.filter(sl=> !skip.has(sl.id)).length;
-  const isThisWeek = shoppingWeek === WEEK_KEYS[currentWeekIndex()];
+  const { items, missingIngredients, unmatchedMeals, mealSlots } = buildShoppingList(shoppingWeeks);
+  const thisWeek = WEEK_KEYS[currentWeekIndex()];
+  const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
+  const plannedTotal = shoppingWeeks.reduce((n, wk)=> n + plannedSlots(wk).length, 0);
 
   view.innerHTML = `
     <div class="shopping-controls">
-      <div class="bank-filter-label">Shopping list for</div>
+      <div class="bank-filter-label">Shopping for weeks (tap to add or remove)</div>
       <div class="bank-chip-row" id="shoppingWeekChips"></div>
     </div>
-    ${slots.length ? `
-      <div class="section-label">Shopping for ${selectedSlots} of ${slots.length} meal${slots.length===1?'':'s'}</div>
-      <div class="shopping-quick" id="shoppingQuick"></div>
-      <div id="shoppingMeals"></div>
-    ` : ''}
-    <div class="section-label">${items.length} item${items.length===1?'':'s'} · ${mealCount} meal${mealCount===1?'':'s'}</div>
+    ${plannedTotal ? `<div class="section-label">Shopping for ${mealSlots} of ${plannedTotal} meal${plannedTotal===1?'':'s'}</div>` : ''}
+    <div id="shoppingMeals"></div>
+    <div class="section-label">${items.length} item${items.length===1?'':'s'}</div>
     <div id="shoppingItems"></div>
     ${(missingIngredients.length || unmatchedMeals.length) ? `
       <div class="section-label">Needs attention</div>
@@ -2825,54 +2839,71 @@ function renderShoppingView(){
   const weekChips = document.getElementById('shoppingWeekChips');
   WEEK_KEYS.forEach(wk=>{
     const chip = document.createElement('div');
-    chip.className = 'bank-chip' + (shoppingWeek===wk ? ' active':'');
-    chip.textContent = `Week ${wk}`;
-    chip.onclick = ()=>{ shoppingWeek = wk; renderShoppingView(); };
+    chip.className = 'bank-chip' + (shoppingWeeks.includes(wk) ? ' active':'');
+    chip.textContent = `Week ${wk}${wk===thisWeek ? ' ·now' : ''}`;
+    chip.onclick = ()=>{
+      shoppingWeeks = shoppingWeeks.includes(wk)
+        ? shoppingWeeks.filter(w=> w !== wk)
+        : WEEK_KEYS.filter(w=> w===wk || shoppingWeeks.includes(w));
+      saveShoppingWeeks();
+      setTimeout(renderShoppingView, 0);
+    };
     weekChips.appendChild(chip);
   });
 
-  const setSkip = (arr)=>{
-    if(arr.length) shoppingSkip[shoppingWeek] = arr; else delete shoppingSkip[shoppingWeek];
+  const setSkip = (wk, arr)=>{
+    if(arr.length) shoppingSkip[wk] = arr; else delete shoppingSkip[wk];
     saveShoppingSkip();
     setTimeout(renderShoppingView, 0);
   };
-  const quickWrap = document.getElementById('shoppingQuick');
-  if(quickWrap){
-    const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
-    const quick = [
-      ["All", ()=> setSkip([])],
-      ["None", ()=> setSkip(slots.map(sl=> sl.id))],
-    ];
-    if(isThisWeek) quick.push(["Today on", ()=> setSkip(slots.filter(sl=> sl.dayIdx < todayIdx).map(sl=> sl.id))]);
+  const mealsWrap = document.getElementById('shoppingMeals');
+  shoppingWeeks.forEach(wk=>{
+    const slots = plannedSlots(wk);
+    const skip = new Set(shoppingSkip[wk] || []);
+    const head = document.createElement('div');
+    head.className = 'shopping-week-head';
+    head.innerHTML = `<span class="shopping-week-name">Week ${wk}</span>`;
+    const quick = [];
+    if(slots.length){
+      quick.push(["All", ()=> setSkip(wk, [])]);
+      quick.push(["None", ()=> setSkip(wk, slots.map(sl=> sl.id))]);
+      if(wk===thisWeek) quick.push(["Today on", ()=> setSkip(wk, slots.filter(sl=> sl.dayIdx < todayIdx).map(sl=> sl.id))]);
+    }
     quick.forEach(([label, fn])=>{
       const chip = document.createElement('div');
       chip.className = 'bank-chip';
       chip.textContent = label;
       chip.onclick = fn;
-      quickWrap.appendChild(chip);
+      head.appendChild(chip);
     });
-  }
-  const mealsWrap = document.getElementById('shoppingMeals');
-  if(mealsWrap){
+    mealsWrap.appendChild(head);
+    if(!slots.length){
+      const empty = document.createElement('div');
+      empty.className = 'bank-empty';
+      empty.textContent = 'No meals planned for this week yet.';
+      mealsWrap.appendChild(empty);
+    }
     slots.forEach(sl=>{
       const on = !skip.has(sl.id);
       const mrow = document.createElement('label');
       mrow.className = 'shopping-item shopping-meal' + (on ? ' on' : '');
       mrow.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span class="shopping-meal-when">${sl.dayShort} ${sl.meal}${sl.who==='adults' ? ' · A' : ''}</span><span class="shopping-item-label">${escapeHtml(sl.name)}</span>`;
       mrow.querySelector('input').onchange = (e)=>{
-        const next = new Set(shoppingSkip[shoppingWeek] || []);
+        const next = new Set(shoppingSkip[wk] || []);
         if(e.target.checked) next.delete(sl.id); else next.add(sl.id);
-        setSkip([...next]);
+        setSkip(wk, [...next]);
       };
       mealsWrap.appendChild(mrow);
     });
-  }
+  });
 
   const itemsWrap = document.getElementById('shoppingItems');
   if(items.length===0){
-    itemsWrap.innerHTML = slots.length && selectedSlots===0
-      ? `<div class="bank-empty">No meals ticked — tick the meals you're shopping for above.</div>`
-      : `<div class="bank-empty">No ingredients to show — either no meals are planned for this week, or the planned meals don't have ingredients recorded yet.</div>`;
+    itemsWrap.innerHTML = !shoppingWeeks.length
+      ? `<div class="bank-empty">Pick one or more weeks above.</div>`
+      : plannedTotal && mealSlots===0
+        ? `<div class="bank-empty">No meals ticked — tick the meals you're shopping for above.</div>`
+        : `<div class="bank-empty">No ingredients to show — either no meals are planned, or the ticked meals don't have ingredients recorded yet.</div>`;
   } else {
     items.forEach(item=>{
       const key = item.toLowerCase();

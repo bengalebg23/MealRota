@@ -31,6 +31,11 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.21.0 — New "Orders" tab: the 12 Asda orders from the legacy app (Jan–Apr
+           2026) plus a + button to add more by pasting the order text (parsed
+           on the phone; prices/quantities/totals stripped). "Most bought"
+           ranks items by how many orders they're in, with + to add one to
+           Regulars. Stored in mealrota_asda_orders_v1 (synced).
   v2.20.0 — Shopping tab: "Regulars" section below the meal ingredients —
            Weekly basics / Cupboard & snacks / Household, each foldable. Seeded
            from the legacy Meal Planner's 12 Asda orders and archived shopping
@@ -346,7 +351,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.20.0</title>
+<title>Meal Rota v2.21.0</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -734,6 +739,17 @@
   .shopping-meal:not(.on) .shopping-item-label{color:var(--muted);}
   .shopping-week-head{display:flex; align-items:center; gap:6px; margin:12px 4px 6px;}
   .shopping-week-name{font-family:'Patrick Hand',cursive; font-size:18px; color:var(--paper); margin-right:auto;}
+  /* ── Orders tab (v2.21.0) ── */
+  .order-paste{flex:none; min-height:180px; resize:vertical; font-size:13px; line-height:1.45;}
+  .order-add-fab{
+    flex:none; width:40px; height:40px; border-radius:50%; border:none; background:var(--mustard); color:#fff;
+    font-size:24px; line-height:1; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.18);
+  }
+  .order-card{background:var(--surface); border:1px solid var(--line); border-radius:10px; margin:0 4px 6px; padding:10px 12px;}
+  .order-card-head{display:flex; align-items:center; gap:10px; cursor:pointer;}
+  .order-card-items{font-size:12.5px; color:var(--paper-dim); line-height:1.55; margin-top:8px;}
+  .order-freq{display:flex; align-items:center; gap:8px;}
+  .order-freq-bar{height:6px; border-radius:3px; background:var(--mustard); opacity:.55; flex:none;}
   .shopping-clear-btn{
     font-family:'Inter',sans-serif; font-size:12px; font-weight:600; color:var(--rose);
     background:none; border:1px solid var(--rose-dim); border-radius:8px; padding:6px 12px; cursor:pointer;
@@ -842,6 +858,7 @@
     <button class="view-btn" data-view="bank">Meal bank</button>
     <button class="view-btn active" data-view="history">History</button>
     <button class="view-btn" data-view="shopping">Shopping</button>
+    <button class="view-btn" data-view="orders">Orders</button>
   </div>
 </header>
 
@@ -849,6 +866,7 @@
 <main id="bankView" style="display:none;"></main>
 <main id="historyView"></main>
 <main id="shoppingView" style="display:none;"></main>
+<main id="ordersView" style="display:none;"></main>
 
 <p class="footer-note">tap a meal to change it · rota repeats A → B → C → D → A<br>synced to the cloud · tap ☁ Synced for backups</p>
 
@@ -902,6 +920,21 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="orderBackdrop">
+  <div class="sheet bankprompt-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title display">Add an Asda order</div>
+      <button class="sheet-close" id="orderClose">✕</button>
+    </div>
+    <div class="bankprompt-note">Paste the items from the Asda app or order email. Prices, quantities and totals are stripped out.</div>
+    <input type="date" class="bank-add-input" id="orderDate" style="flex:none; margin-bottom:8px;">
+    <textarea class="bank-add-input order-paste" id="orderPaste" placeholder="Semi skimmed milk 6 pints  £1.65&#10;2 x Passata  £0.90&#10;Bin liners  £2.00"></textarea>
+    <div class="shopping-meal-when" id="orderPreview" style="width:auto; margin:8px 2px;"></div>
+    <button class="bank-add-btn" id="orderSave" style="padding:11px 0;">save order</button>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="recipeBackdrop">
   <div class="sheet recipe-sheet">
     <div class="sheet-handle"></div>
@@ -914,7 +947,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.20.0";
+const APP_VERSION = "2.21.0";
 
 /* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
    Every synced localStorage key is mirrored to Firebase RTDB at
@@ -942,7 +975,8 @@ const SYNC_KEYS = [
   "mealrota_hidden_meals_v1", "mealrota_renamed_meals_v1", "mealrota_tag_overrides_v1",
   "mealrota_ingredient_overrides_v1", "mealrota_history_v1",
   "mealrota_bank_prompt_skip_v1", "mealrota_shopping_checked_v1",
-  "mealrota_shopping_pick_v1", "mealrota_regulars_v1"
+  "mealrota_shopping_pick_v1", "mealrota_regulars_v1",
+  "mealrota_asda_orders_v1"
 ];
 const SYNC_LAST_KEY = "mealrota_sync_last_v1";   // set once this phone has synced at least once
 const SYNC_DIRTY_KEY = "mealrota_sync_dirty_v1"; // keys saved here but not yet confirmed in the cloud
@@ -3093,6 +3127,141 @@ function renderShoppingRegulars(){
   }
 }
 
+/* ───────────────────────── Asda orders (v2.21.0) ─────────────────────────
+   Past orders, seeded from the legacy Meal Planner's ASDA_ORDERS. Added by
+   pasting the order text — parsed on the phone, no API calls (playbook: no
+   live Claude/API features). "Most bought" feeds the Regulars list. */
+const ASDA_ORDERS_KEY = "mealrota_asda_orders_v1";
+const SEED_ASDA_ORDERS = [{"id":"seed9","date":"2026-04-09","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Free range eggs","Clover spread","Avocados","Baby leaf","Mini cucumbers","Courgettes","Carrots","Tenderstem broccoli","Wholemeal wraps","Bagels","Garlic & coriander naans","Porridge oats","Multigrain hoops","Fruit & fibre","Trek protein flapjacks","Ham slices","Salmon fillets","Snack sausage rolls","Doritos multipack","Coconut milk","Butter chicken curry kit","Veggie fingers","Bin liners","Dishwasher tablets","Bleach"]},{"id":"seed11","date":"2026-03-30","items":["Blueberries","Mixed grapes","Bananas","Baby watermelon","Strawberries","Passata","Tuna chunks","Mixed beans","Baking potatoes","Pak choi","Baby corn","Aubergine","Sausages","Chicken breast portions","Pork mince","Beef mince","Chorizo","Prawns","Mini corn on the cob","Frozen diced onions","Gnocchi","Cheese & garlic flatbread","Prawn pasta salad","Chicken pasta salad","Sweet peppers","Mini cucumbers"]},{"id":"seed10","date":"2026-03-20","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Avocados","Baby leaf","Sweet peppers","Whole cucumber","Courgettes","Carrots","Leeks","Chicken breast fillets","Whole chicken","Passata","Spaghetti loops & sausages","Double cream","Unsalted butter","Puff pastry","Mature cheddar","Philadelphia garlic & herbs","Apple juice","Coconut milk","Bagels","Plain naans","Croissants","Pains au chocolat","Fajita seasoning","Porridge sachets","Organix toddler snacks","Chicken snacks"]},{"id":"seed8","date":"2026-03-01","items":["Semi skimmed milk 6 pints","Free range eggs","Bananas","Carrots","Avocados","Sweet peppers","Passata","Crumpets","Sausages","Pâté","Double cream","Pitta bread","Fish fingers","Heinz baked beans","Courgettes","Beef mince","Chicken breast fillets"]},{"id":"seed7","date":"2026-02-23","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Free range eggs","Mature cheddar","Ham slices","Pâté","Sourdough bloomer","Baby leaf","Sweet peppers","Avocados","Bagels","Wholemeal wraps","Apple juice","Courgettes","Sausage rolls"]},{"id":"seed6","date":"2026-02-16","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Passata","Free range eggs","Mature cheddar","Ham slices","Carrots","Whole cucumber","Bananas","Avocados","Sweet peppers","Apple juice","Coconut milk","Spaghetti","Wholemeal wraps","Courgettes"]},{"id":"seed5","date":"2026-02-08","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Passata","Tuna chunks","Crumpets","Mature cheddar","Philadelphia garlic & herbs","Ham slices","Baby leaf","Avocados","Bananas","Carrots","Beef mince","Chicken breast fillets","Bagels","Courgettes","Sausage rolls","Lasagne sheets","Fish fingers"]},{"id":"seed4","date":"2026-01-31","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Passata","Tuna chunks","Free range eggs","Double cream","Mature cheddar","Philadelphia garlic & herbs","Ham slices","Carrots","Baby leaf","Sweet peppers","Beef mince","Chicken breast fillets","Pitta bread","Courgettes","Sausage rolls"]},{"id":"seed3","date":"2026-01-24","items":["Semi skimmed milk 6 pints","Multiseeded rolls","Crumpets","Avocados","Whole cucumber","Mini cucumbers","Sausages","Beef mince","Passata","Fish fingers","Carrots","Apple juice","Bagels","Chicken breast slices","Courgettes","Coconut milk","Thai curry paste"]},{"id":"seed1","date":"2026-01-14","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Mini cucumbers","Avocados","Baby leaf","Carrots","Passata","Crumpets","Organix toddler snacks","Porridge oats","Philadelphia garlic & herbs","Sourdough bloomer","Chicken breast slices","Apple juice","Red lentils","Courgettes","Sausage rolls"]},{"id":"seed2","date":"2026-01-14","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Avocados","Mini cucumbers","Passata","Crumpets","Carrots","Courgettes","Porridge oats","Tenderstem broccoli","Red onions","Aubergine","Ham slices","Chicken breast slices","Sausage rolls","Red lentils","Baby leaf","Philadelphia garlic & herbs"]},{"id":"seed0","date":"2026-01-08","items":["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Free range eggs","Carrots","Multiseeded rolls","Sausages","Chicken breast fillets","Mini cucumbers","Sweet peppers","Baby leaf","Spring onions","Apple juice","Ham slices","Passata","Crumpets","Chicken soup","Vegetable soup","Orzo","Parmesan","Philadelphia garlic & herbs","Heinz baked beans","Salmon fillets","Sausage rolls","Avocados","Courgettes"]}];
+function loadAsdaOrders(){
+  try{ const raw = localStorage.getItem(ASDA_ORDERS_KEY); if(raw){ const a = JSON.parse(raw); if(Array.isArray(a)) return a; } }catch(e){}
+  return SEED_ASDA_ORDERS.map(o=> ({...o, items:[...o.items]}));
+}
+function saveAsdaOrders(){ try{ lsSet(ASDA_ORDERS_KEY, JSON.stringify(asdaOrders)); }catch(e){} }
+let asdaOrders = loadAsdaOrders(); // [{id, date:"YYYY-MM-DD", items:[...]}]
+let ordersOpenId = null;
+
+// Turn pasted order text into clean item names.
+function parseOrderText(text){
+  const skip = /^(sub ?total|total|delivery|savings?|discount|multibuy|offer|order|substitut|unavailable|bag charge|carrier bag|vat|payment|card|visa|mastercard|items?\b|qty|quantity|price)/i;
+  const seen = new Set(), out = [];
+  text.split(/\r?\n/).forEach(line=>{
+    let t = line.replace(/\t/g, ' ').trim();
+    if(!t) return;
+    t = t.replace(/\s*[-–]?\s*£\s*\d+(\.\d{1,2})?\s*$/,'')      // trailing price
+         .replace(/\s+\d+\.\d{2}\s*$/,'')                       // trailing bare price
+         .replace(/^\d+\s*(x|×)\s*/i,'')                          // "2 x "
+         .replace(/\s*(x|×)\s*\d+\s*$/i,'')                      // " x2"
+         .replace(/^[•*·-]\s*/,'')
+         .trim();
+    if(!t || skip.test(t) || /^[£\d.,\s%-]+$/.test(t) || t.length < 2) return;
+    const key = t.toLowerCase();
+    if(seen.has(key)) return;
+    seen.add(key); out.push(t);
+  });
+  return out;
+}
+
+function orderDateLabel(iso){
+  const d = new Date(iso + 'T12:00:00');
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric'});
+}
+
+function renderOrdersView(){
+  const view = document.getElementById('ordersView');
+  const orders = [...asdaOrders].sort((a,b)=> b.date.localeCompare(a.date));
+  // how often each item turns up across all orders
+  const freq = new Map();
+  orders.forEach(o=> new Set(o.items.map(i=> i.toLowerCase())).forEach(k=>{
+    const cur = freq.get(k) || {name: o.items.find(i=> i.toLowerCase()===k), n:0};
+    cur.n++; freq.set(k, cur);
+  }));
+  const top = [...freq.values()].filter(f=> f.n >= 2).sort((a,b)=> b.n - a.n || a.name.localeCompare(b.name)).slice(0, 25);
+  const regularNames = new Set(shoppingRegulars.map(r=> r.name.toLowerCase()));
+
+  view.innerHTML = `
+    <div class="shopping-week-head" style="margin-top:16px;">
+      <span class="shopping-week-name">Asda orders</span>
+      <span class="shopping-meal-when" style="width:auto;">${orders.length} saved</span>
+      <button class="order-add-fab" id="orderAddBtn" title="Add an order">+</button>
+    </div>
+    ${top.length ? `<div class="section-label">Most bought · tap + to add to Regulars</div><div id="ordersTop"></div>` : ''}
+    <div class="section-label">Orders</div>
+    <div id="ordersList"></div>
+  `;
+  document.getElementById('orderAddBtn').onclick = openOrderSheet;
+
+  const topWrap = document.getElementById('ordersTop');
+  if(topWrap){
+    top.forEach(f=>{
+      const row = document.createElement('div');
+      row.className = 'shopping-item order-freq';
+      const isReg = regularNames.has(f.name.toLowerCase());
+      row.innerHTML = `<span class="shopping-item-label">${escapeHtml(f.name)}</span>
+        <span class="order-freq-bar" style="width:${Math.round(40 * f.n / orders.length)}px"></span>
+        <span class="shopping-meal-when" style="width:42px; text-align:right;">${f.n}/${orders.length}</span>
+        ${isReg ? '<span class="shopping-meal-when" style="width:22px; text-align:center;">✓</span>' : '<div class="bank-chip" style="padding:3px 8px;">+</div>'}`;
+      const addChip = row.querySelector('.bank-chip');
+      if(addChip) addChip.onclick = ()=>{
+        shoppingRegulars.push({name:f.name, group: f.n / orders.length >= 0.5 ? 'weekly' : 'cupboard'});
+        saveRegulars();
+        setTimeout(renderOrdersView, 0);
+      };
+      topWrap.appendChild(row);
+    });
+  }
+
+  const list = document.getElementById('ordersList');
+  if(!orders.length) list.innerHTML = `<div class="bank-empty">No orders yet — tap + to add one.</div>`;
+  orders.forEach(o=>{
+    const open = ordersOpenId === o.id;
+    const card = document.createElement('div');
+    card.className = 'order-card';
+    card.innerHTML = `
+      <div class="order-card-head">
+        <span class="shopping-item-label">${escapeHtml(orderDateLabel(o.date))}</span>
+        <span class="shopping-meal-when" style="width:auto;">${o.items.length} items ${open ? '▾' : '▸'}</span>
+      </div>
+      ${open ? `<div class="order-card-items">${o.items.map(escapeHtml).join(' · ')}</div>
+        <div style="margin-top:10px;"><button class="shopping-clear-btn">delete order</button></div>` : ''}`;
+    card.querySelector('.order-card-head').onclick = ()=>{ ordersOpenId = open ? null : o.id; setTimeout(renderOrdersView, 0); };
+    const del = card.querySelector('button');
+    if(del) del.onclick = ()=>{
+      if(!confirm(`Delete the ${orderDateLabel(o.date)} order?`)) return;
+      asdaOrders = asdaOrders.filter(x=> x.id !== o.id);
+      saveAsdaOrders();
+      setTimeout(renderOrdersView, 0);
+    };
+    list.appendChild(card);
+  });
+}
+
+function openOrderSheet(){
+  const d = new Date();
+  document.getElementById('orderDate').value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('orderPaste').value = '';
+  document.getElementById('orderPreview').textContent = '';
+  document.getElementById('orderBackdrop').classList.add('open');
+}
+function closeOrderSheet(){ document.getElementById('orderBackdrop').classList.remove('open'); }
+document.getElementById('orderClose').onclick = closeOrderSheet;
+document.getElementById('orderBackdrop').addEventListener('click', ev=>{ if(ev.target.id === 'orderBackdrop') closeOrderSheet(); });
+document.getElementById('orderPaste').addEventListener('input', ev=>{
+  const n = parseOrderText(ev.target.value).length;
+  document.getElementById('orderPreview').textContent = n ? `${n} item${n===1?'':'s'} found` : '';
+});
+document.getElementById('orderSave').onclick = ()=>{
+  const items = parseOrderText(document.getElementById('orderPaste').value);
+  const date = document.getElementById('orderDate').value;
+  if(!items.length){ alert('No items found — paste the order text first.'); return; }
+  if(!date){ alert('Pick the order date.'); return; }
+  asdaOrders.push({id: 'o' + Date.now(), date, items});
+  saveAsdaOrders();
+  closeOrderSheet();
+  setTimeout(renderOrdersView, 0);
+};
+
 /* ───────────────────────── View switcher ───────────────────────── */
 let currentView = 'history';
 function setView(v){
@@ -3102,10 +3271,12 @@ function setView(v){
   document.getElementById('bankView').style.display = v==='bank' ? '' : 'none';
   document.getElementById('historyView').style.display = v==='history' ? '' : 'none';
   document.getElementById('shoppingView').style.display = v==='shopping' ? '' : 'none';
+  document.getElementById('ordersView').style.display = v==='orders' ? '' : 'none';
   if(v==='rota') renderAll();
   if(v==='bank') renderBankView();
   if(v==='history') renderHistoryView();
   if(v==='shopping') renderShoppingView();
+  if(v==='orders') renderOrdersView();
 }
 document.querySelectorAll('.view-btn').forEach(b=>{
   b.onclick = ()=> setView(b.dataset.view);

@@ -31,6 +31,12 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.20.0 — Shopping tab: "Regulars" section below the meal ingredients —
+           Weekly basics / Cupboard & snacks / Household, each foldable. Seeded
+           from the legacy Meal Planner's 12 Asda orders and archived shopping
+           lists, plus usual household bits (jam, toilet roll, etc.). "edit" to
+           add (pick a group) or remove. List synced in mealrota_regulars_v1;
+           ticks share shoppingChecked so "clear all checks" resets both.
   v2.19.0 — Shopping tab: one total list of every ticked meal across all weeks.
            Week chips now just switch which week's meals you're ticking (count
            of ticked meals shown on each chip). Meals start unticked; All / None
@@ -340,7 +346,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.19.0</title>
+<title>Meal Rota v2.20.0</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -908,7 +914,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.19.0";
+const APP_VERSION = "2.20.0";
 
 /* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
    Every synced localStorage key is mirrored to Firebase RTDB at
@@ -936,7 +942,7 @@ const SYNC_KEYS = [
   "mealrota_hidden_meals_v1", "mealrota_renamed_meals_v1", "mealrota_tag_overrides_v1",
   "mealrota_ingredient_overrides_v1", "mealrota_history_v1",
   "mealrota_bank_prompt_skip_v1", "mealrota_shopping_checked_v1",
-  "mealrota_shopping_pick_v1"
+  "mealrota_shopping_pick_v1", "mealrota_regulars_v1"
 ];
 const SYNC_LAST_KEY = "mealrota_sync_last_v1";   // set once this phone has synced at least once
 const SYNC_DIRTY_KEY = "mealrota_sync_dirty_v1"; // keys saved here but not yet confirmed in the cloud
@@ -2869,8 +2875,9 @@ function renderShoppingView(){
         ${unmatchedMeals.length ? `<b>Not in the meal bank</b> (typed without saving) — ingredients unknown: ${unmatchedMeals.map(escapeHtml).join(', ')}` : ''}
       </div>
     ` : ''}
+    <div id="shoppingRegulars"></div>
     <div style="padding:14px 4px 0; display:flex; gap:8px;">
-      ${items.length ? `<button class="shopping-clear-btn" id="shoppingClearBtn">clear all checks</button>` : ''}
+      <button class="shopping-clear-btn" id="shoppingClearBtn">clear all checks</button>
       ${mealSlots ? `<button class="shopping-clear-btn" id="shoppingUntickBtn">untick all meals</button>` : ''}
     </div>
   `;
@@ -2945,7 +2952,7 @@ function renderShoppingView(){
   } else {
     items.forEach(item=>{
       const key = item.toLowerCase();
-      const row = document.createElement('div');
+      const row = document.createElement('label');
       row.className = 'shopping-item' + (shoppingChecked[key] ? ' checked' : '');
       row.innerHTML = `<input type="checkbox" ${shoppingChecked[key] ? 'checked' : ''}><span class="shopping-item-label">${escapeHtml(item)}</span>`;
       row.querySelector('input').onchange = (e)=>{
@@ -2961,9 +2968,128 @@ function renderShoppingView(){
   if(clearBtn){
     clearBtn.onclick = ()=>{
       items.forEach(item=> delete shoppingChecked[item.toLowerCase()]);
+      shoppingRegulars.forEach(r=> delete shoppingChecked[r.name.toLowerCase()]);
       saveShoppingChecked(shoppingChecked);
-      renderShoppingView();
+      setTimeout(renderShoppingView, 0);
     };
+  }
+  renderShoppingRegulars();
+}
+
+/* ── Regulars (v2.20.0): household + cupboard bits bought every week or month,
+   separate from meal ingredients. Seeded from the legacy Meal Planner's Asda
+   orders/shopping lists; edit in the app. Ticks share shoppingChecked. ── */
+const REGULAR_GROUPS = [
+  {key:"weekly", label:"Weekly basics"},
+  {key:"cupboard", label:"Cupboard & snacks"},
+  {key:"household", label:"Household"},
+];
+const DEFAULT_REGULARS = {
+  weekly: ["Semi skimmed milk 6 pints","Warburtons wholemeal bread","Multiseeded rolls","Free range eggs","Bananas","Avocados",
+    "Carrots","Courgettes","Baby leaf","Sweet peppers","Mini cucumbers","Ham slices","Chicken breast slices","Mature cheddar",
+    "Philadelphia garlic & herbs","Crumpets","Bagels","Wholemeal wraps","Apple juice","Sausage rolls"],
+  cupboard: ["Passata","Tuna chunks","Coconut milk","Heinz baked beans","Porridge oats","Porridge sachets","Multigrain hoops",
+    "Fruit & fibre","Clover spread","Jam","Organix toddler snacks","Trek protein flapjacks","Doritos multipack"],
+  household: ["Bin liners","Dishwasher tablets","Bleach","Washing-up liquid","Laundry detergent","Toilet roll","Kitchen roll",
+    "Hand soap","Toothpaste","Baby wipes","Nappies"],
+};
+const REGULARS_KEY = "mealrota_regulars_v1";
+function loadRegulars(){
+  try{ const raw = localStorage.getItem(REGULARS_KEY); if(raw){ const a = JSON.parse(raw); if(Array.isArray(a)) return a; } }catch(e){}
+  const out = [];
+  REGULAR_GROUPS.forEach(g=> DEFAULT_REGULARS[g.key].forEach(name=> out.push({name, group:g.key})));
+  return out; // [{name, group}]
+}
+function saveRegulars(){ try{ lsSet(REGULARS_KEY, JSON.stringify(shoppingRegulars)); }catch(e){} }
+let shoppingRegulars = loadRegulars();
+// which groups are folded away — a per-phone view preference, not synced
+const REGULARS_OPEN_KEY = "mealrota_regulars_open_v1";
+let regularsOpen = (()=>{ try{ return JSON.parse(localStorage.getItem(REGULARS_OPEN_KEY)) || {}; }catch(e){ return {}; } })();
+let regularsEditing = false;
+
+function renderShoppingRegulars(){
+  const wrap = document.getElementById('shoppingRegulars');
+  if(!wrap) return;
+  const got = shoppingRegulars.filter(r=> shoppingChecked[r.name.toLowerCase()]).length;
+  wrap.innerHTML = `
+    <div class="shopping-week-head" style="margin-top:22px;">
+      <span class="shopping-week-name">Regulars</span>
+      <span class="shopping-meal-when" style="width:auto;">${got}/${shoppingRegulars.length} got</span>
+      <div class="bank-chip${regularsEditing ? ' active' : ''}" id="regularsEditBtn">${regularsEditing ? 'done' : 'edit'}</div>
+    </div>
+    <div id="regularsGroups"></div>
+    ${regularsEditing ? `
+      <div class="bank-add-card" style="margin-top:8px;">
+        <div class="bank-add-row">
+          <input type="text" class="bank-add-input" id="regularsAddInput" placeholder="add a regular, e.g. tea bags">
+          <button class="bank-add-btn" id="regularsAddBtn">add</button>
+        </div>
+        <div class="bank-chip-row" id="regularsAddGroup" style="margin-top:8px;"></div>
+      </div>` : ''}
+  `;
+  const rerender = ()=> setTimeout(renderShoppingRegulars, 0);
+  document.getElementById('regularsEditBtn').onclick = ()=>{ regularsEditing = !regularsEditing; rerender(); };
+
+  const groupsWrap = document.getElementById('regularsGroups');
+  REGULAR_GROUPS.forEach(g=>{
+    const rows = shoppingRegulars.filter(r=> r.group === g.key).sort((a,b)=> a.name.localeCompare(b.name));
+    if(!rows.length && !regularsEditing) return;
+    const open = regularsOpen[g.key] !== false;
+    const gotHere = rows.filter(r=> shoppingChecked[r.name.toLowerCase()]).length;
+    const head = document.createElement('div');
+    head.className = 'section-label';
+    head.style.cursor = 'pointer';
+    head.textContent = `${open ? '▾' : '▸'} ${g.label} · ${gotHere}/${rows.length}`;
+    head.onclick = ()=>{
+      regularsOpen[g.key] = !open;
+      try{ localStorage.setItem(REGULARS_OPEN_KEY, JSON.stringify(regularsOpen)); }catch(e){}
+      rerender();
+    };
+    groupsWrap.appendChild(head);
+    if(!open) return;
+    rows.forEach(r=>{
+      const key = r.name.toLowerCase();
+      const row = document.createElement('label');
+      row.className = 'shopping-item' + (shoppingChecked[key] ? ' checked' : '');
+      row.innerHTML = `<input type="checkbox" ${shoppingChecked[key] ? 'checked' : ''}><span class="shopping-item-label">${escapeHtml(r.name)}</span>${regularsEditing ? '<button class="shopping-clear-btn" style="padding:3px 9px;" title="Remove">×</button>' : ''}`;
+      row.querySelector('input').onchange = (e)=>{
+        if(e.target.checked) shoppingChecked[key] = true; else delete shoppingChecked[key];
+        saveShoppingChecked(shoppingChecked);
+        rerender();
+      };
+      const del = row.querySelector('button');
+      if(del) del.onclick = ()=>{
+        shoppingRegulars = shoppingRegulars.filter(x=> x !== r);
+        delete shoppingChecked[key];
+        saveRegulars(); saveShoppingChecked(shoppingChecked);
+        rerender();
+      };
+      groupsWrap.appendChild(row);
+    });
+  });
+
+  if(regularsEditing){
+    let addGroup = renderShoppingRegulars.addGroup || "household";
+    const chips = document.getElementById('regularsAddGroup');
+    REGULAR_GROUPS.forEach(g=>{
+      const chip = document.createElement('div');
+      chip.className = 'bank-chip' + (g.key===addGroup ? ' active' : '');
+      chip.textContent = g.label;
+      chip.onclick = ()=>{ renderShoppingRegulars.addGroup = g.key; rerender(); };
+      chips.appendChild(chip);
+    });
+    const input = document.getElementById('regularsAddInput');
+    const add = ()=>{
+      const name = input.value.trim();
+      if(!name) return;
+      if(shoppingRegulars.some(x=> x.name.toLowerCase() === name.toLowerCase())){ input.value = ''; return; }
+      shoppingRegulars.push({name, group:addGroup});
+      saveRegulars();
+      rerender();
+      setTimeout(()=>{ const i = document.getElementById('regularsAddInput'); if(i) i.focus(); }, 10);
+    };
+    document.getElementById('regularsAddBtn').onclick = add;
+    input.onkeydown = (e)=>{ if(e.key === 'Enter') add(); };
   }
 }
 

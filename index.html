@@ -31,6 +31,17 @@
     weeks — this is the whole point of the rebuild (no more weekly re-planning).
 
   FEATURE HISTORY / CHANGELOG
+  v2.19.0 — Shopping tab: one total list of every ticked meal across all weeks.
+           Week chips now just switch which week's meals you're ticking (count
+           of ticked meals shown on each chip). Meals start unticked; All / None
+           / Today on per week, plus "untick all meals" to start a new shop.
+           Stored as ticked slots in mealrota_shopping_pick_v1 (synced); replaces
+           the v2.16–2.17 shopping_skip/shopping_weeks keys (migrated on first run).
+  v2.18.0 — Ingredients for every meal that had none: Lamb & feta flatbreads
+           (built-in) plus 8 meals added in the app (DEFAULT_CUSTOM_INGREDIENTS,
+           applied only when a meal's list is empty). Karen's, Nursery, MIRA,
+           Takeaway, Fireworks and DnD - Pizza are in NOT_COOKED_AT_HOME so the
+           Shopping tab no longer flags them as missing ingredients.
   v2.17.0 — Shopping tab: week chips are multi-select, so one list can combine
            meals from several weeks (e.g. end of B + most of C). Each selected
            week gets its own meal list with All / None (/ Today on) chips.
@@ -329,7 +340,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rota">
-<title>Meal Rota v2.17.0</title>
+<title>Meal Rota v2.19.0</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -897,7 +908,7 @@
 </div>
 
 <script>
-const APP_VERSION = "2.17.0";
+const APP_VERSION = "2.19.0";
 
 /* ───────────────────────── Cloud sync (v2.14.0) ─────────────────────────
    Every synced localStorage key is mirrored to Firebase RTDB at
@@ -925,7 +936,7 @@ const SYNC_KEYS = [
   "mealrota_hidden_meals_v1", "mealrota_renamed_meals_v1", "mealrota_tag_overrides_v1",
   "mealrota_ingredient_overrides_v1", "mealrota_history_v1",
   "mealrota_bank_prompt_skip_v1", "mealrota_shopping_checked_v1",
-  "mealrota_shopping_skip_v1", "mealrota_shopping_weeks_v1"
+  "mealrota_shopping_pick_v1"
 ];
 const SYNC_LAST_KEY = "mealrota_sync_last_v1";   // set once this phone has synced at least once
 const SYNC_DIRTY_KEY = "mealrota_sync_dirty_v1"; // keys saved here but not yet confirmed in the cloud
@@ -1191,7 +1202,7 @@ const UNIFIED_MEALS = [
   {name:"Avo toast", tags:["lunch","everyone","quick"], ingredients:["bread","avocado"]},
   {name:"Crumpets", tags:["lunch","kids","quick"], ingredients:["crumpets","butter"]},
   // ── newly agreed additions from the planning conversation ──
-  {name:"Lamb & feta flatbreads", tags:["tea","lamb","everyone","medium"],
+  {name:"Lamb & feta flatbreads", tags:["tea","lamb","everyone","medium"], ingredients:["lamb mince","red onion","garlic","ground cumin","ground coriander","smoked paprika","tomato purée","flatbreads","feta","Greek yoghurt","lemon","cucumber","cherry tomatoes","fresh mint"],
     ingredients:["lamb mince","red onion","garlic","ground cumin","ground coriander","smoked paprika","tomato purée","olive oil","flatbreads","feta","Greek yoghurt","lemon","cucumber","cherry tomatoes","fresh mint","pomegranate seeds"],
     recipe:{
       serves:4, time:"~30 min",
@@ -1244,6 +1255,23 @@ function loadCustomMeals(){
 }
 function saveCustomMeals(m){ try{ lsSet(CUSTOM_MEALS_KEY, JSON.stringify(m)); }catch(e){} }
 let customMeals = loadCustomMeals();
+// v2.18.0: starter ingredients for meals added in the app without any. Only
+// fills a meal whose list is empty; edits in Meal Bank save over it as normal.
+const DEFAULT_CUSTOM_INGREDIENTS = {
+  "Ramen": ["ramen noodles","chicken stock","chicken breast","eggs","pak choi","spring onions","soy sauce","garlic","ginger"],
+  "Beans and egg on toast": ["bread","baked beans","eggs","butter"],
+  "Chilli loaded chips": ["oven chips","minced beef","kidney beans","chopped tomatoes","onion","chilli powder","cheddar cheese","soured cream"],
+  "Gnocchi Marry me": ["gnocchi","chicken breast","sun-dried tomatoes","double cream","parmesan","garlic","spinach","chicken stock cube"],
+  "Cheesy wraps": ["tortilla wraps","cheddar cheese","mozzarella","ham"],
+  "BBQ pulled pork Baps": ["pork shoulder","BBQ sauce","onion","brioche buns","coleslaw"],
+  "Chorizo Jacket potato": ["baking potatoes","chorizo","cheddar cheese","butter"],
+  "Red sauce pasta and veg": ["pasta","passata","onion","carrot","peppers","courgette","garlic"],
+};
+customMeals.forEach(m=>{
+  if((!m.ingredients || !m.ingredients.length) && DEFAULT_CUSTOM_INGREDIENTS[m.name]) m.ingredients = [...DEFAULT_CUSTOM_INGREDIENTS[m.name]];
+});
+// eaten out / fed elsewhere: nothing to buy, so the Shopping tab doesn't flag them
+const NOT_COOKED_AT_HOME = ["Karen's", "Nursery", "MIRA", "Takeaway", "Fireworks", "DnD - Pizza"];
 const HIDDEN_MEALS_KEY = "mealrota_hidden_meals_v1";
 function loadHiddenMeals(){ try{ const raw = localStorage.getItem(HIDDEN_MEALS_KEY); if(raw) return JSON.parse(raw); }catch(e){} return []; }
 function saveHiddenMeals(){ try{ lsSet(HIDDEN_MEALS_KEY, JSON.stringify(hiddenMeals)); }catch(e){} }
@@ -2748,24 +2776,27 @@ function loadShoppingChecked(){
 }
 function saveShoppingChecked(c){ try{ lsSet(SHOPPING_CHECKED_KEY, JSON.stringify(c)); }catch(e){} }
 let shoppingChecked = loadShoppingChecked();
-const SHOPPING_WEEKS_KEY = "mealrota_shopping_weeks_v1";
-function loadShoppingWeeks(){
+// v2.19.0: ticked meals are stored per week and ALL of them make one list,
+// whichever week you're looking at. Week chips only switch the view.
+const SHOPPING_PICK_KEY = "mealrota_shopping_pick_v1";
+function loadShoppingPick(){
+  try{ const raw = localStorage.getItem(SHOPPING_PICK_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  // first run: carry over the v2.16/2.17 selection (weeks chosen, minus unticked slots)
+  const out = {};
   try{
-    const raw = localStorage.getItem(SHOPPING_WEEKS_KEY);
-    if(raw){ const arr = JSON.parse(raw); if(Array.isArray(arr)) return arr.filter(w=> WEEK_KEYS.includes(w)); }
+    const weeks = JSON.parse(localStorage.getItem("mealrota_shopping_weeks_v1") || "null") || [WEEK_KEYS[currentWeekIndex()]];
+    const skip = JSON.parse(localStorage.getItem("mealrota_shopping_skip_v1") || "{}");
+    weeks.filter(w=> WEEK_KEYS.includes(w)).forEach(wk=>{
+      const sk = new Set(skip[wk] || []);
+      const ids = plannedSlots(wk).map(sl=> sl.id).filter(id=> !sk.has(id));
+      if(ids.length) out[wk] = ids;
+    });
   }catch(e){}
-  return [WEEK_KEYS[currentWeekIndex()]];
+  return out; // { weekKey: ["mon|tea|family", ...] } — slots being shopped for
 }
-function saveShoppingWeeks(){ try{ lsSet(SHOPPING_WEEKS_KEY, JSON.stringify(shoppingWeeks)); }catch(e){} }
-let shoppingWeeks = loadShoppingWeeks(); // weeks being shopped for, kept in A-D order
-
-const SHOPPING_SKIP_KEY = "mealrota_shopping_skip_v1";
-function loadShoppingSkip(){
-  try{ const raw = localStorage.getItem(SHOPPING_SKIP_KEY); if(raw) return JSON.parse(raw); }catch(e){}
-  return {}; // { weekKey: ["mon|tea|family", ...] } — slots NOT being shopped for
-}
-function saveShoppingSkip(){ try{ lsSet(SHOPPING_SKIP_KEY, JSON.stringify(shoppingSkip)); }catch(e){} }
-let shoppingSkip = loadShoppingSkip();
+function saveShoppingPick(){ try{ lsSet(SHOPPING_PICK_KEY, JSON.stringify(shoppingPick)); }catch(e){} }
+let shoppingPick = null; // loaded on first render (needs template)
+let shoppingViewWeek = WEEK_KEYS[currentWeekIndex()];
 
 // Every planned meal slot in a week, in day order.
 function plannedSlots(weekKey){
@@ -2779,16 +2810,18 @@ function plannedSlots(weekKey){
   });
   return slots;
 }
+// ticked slots in a week that still have a meal planned
+function pickedSlots(wk){
+  const pick = new Set(shoppingPick[wk] || []);
+  return plannedSlots(wk).filter(sl=> pick.has(sl.id));
+}
 
-// Ticked meals across every selected week, merged into one ingredient list.
-function buildShoppingList(weekKeys){
+// Every ticked meal across all four weeks, merged into one ingredient list.
+function buildShoppingList(){
   const mealNames = new Set();
   let mealSlots = 0;
-  weekKeys.forEach(wk=>{
-    const skip = new Set(shoppingSkip[wk] || []);
-    plannedSlots(wk).forEach(slot=>{
-      if(!skip.has(slot.id)){ mealNames.add(slot.name); mealSlots++; }
-    });
+  WEEK_KEYS.forEach(wk=>{
+    pickedSlots(wk).forEach(slot=>{ mealNames.add(slot.name); mealSlots++; });
   });
 
   const ingredientMap = new Map(); // lowercase -> original-case display text
@@ -2797,9 +2830,9 @@ function buildShoppingList(weekKeys){
 
   mealNames.forEach(name=>{
     const m = allMeals().find(x=> x.name === name);
-    if(!m){ unmatchedMeals.push(name); return; }
+    if(!m){ if(!NOT_COOKED_AT_HOME.includes(name)) unmatchedMeals.push(name); return; }
     const ing = ingredientsOf(m);
-    if(ing.length === 0){ missingIngredients.push(name); return; }
+    if(ing.length === 0){ if(!NOT_COOKED_AT_HOME.includes(name)) missingIngredients.push(name); return; }
     ing.forEach(item=>{
       const key = item.toLowerCase();
       if(!ingredientMap.has(key)) ingredientMap.set(key, item);
@@ -2811,20 +2844,23 @@ function buildShoppingList(weekKeys){
 }
 
 function renderShoppingView(){
+  if(!shoppingPick) shoppingPick = loadShoppingPick();
   const view = document.getElementById('shoppingView');
-  const { items, missingIngredients, unmatchedMeals, mealSlots } = buildShoppingList(shoppingWeeks);
+  const { items, missingIngredients, unmatchedMeals, mealSlots } = buildShoppingList();
   const thisWeek = WEEK_KEYS[currentWeekIndex()];
   const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
-  const plannedTotal = shoppingWeeks.reduce((n, wk)=> n + plannedSlots(wk).length, 0);
+  const wk = shoppingViewWeek;
+  const slots = plannedSlots(wk);
+  const pick = new Set(shoppingPick[wk] || []);
+  const pickedWeeks = WEEK_KEYS.filter(w=> pickedSlots(w).length);
 
   view.innerHTML = `
     <div class="shopping-controls">
-      <div class="bank-filter-label">Shopping for weeks (tap to add or remove)</div>
+      <div class="bank-filter-label">Tick meals from any week</div>
       <div class="bank-chip-row" id="shoppingWeekChips"></div>
     </div>
-    ${plannedTotal ? `<div class="section-label">Shopping for ${mealSlots} of ${plannedTotal} meal${plannedTotal===1?'':'s'}</div>` : ''}
     <div id="shoppingMeals"></div>
-    <div class="section-label">${items.length} item${items.length===1?'':'s'}</div>
+    <div class="section-label">${items.length} item${items.length===1?'':'s'} · ${mealSlots} meal${mealSlots===1?'':'s'}${pickedWeeks.length ? ` from week${pickedWeeks.length===1?'':'s'} ${pickedWeeks.join(' + ')}` : ''}</div>
     <div id="shoppingItems"></div>
     ${(missingIngredients.length || unmatchedMeals.length) ? `
       <div class="section-label">Needs attention</div>
@@ -2833,77 +2869,79 @@ function renderShoppingView(){
         ${unmatchedMeals.length ? `<b>Not in the meal bank</b> (typed without saving) — ingredients unknown: ${unmatchedMeals.map(escapeHtml).join(', ')}` : ''}
       </div>
     ` : ''}
-    ${items.length ? `<div style="padding:14px 4px 0;"><button class="shopping-clear-btn" id="shoppingClearBtn">clear all checks</button></div>` : ''}
+    <div style="padding:14px 4px 0; display:flex; gap:8px;">
+      ${items.length ? `<button class="shopping-clear-btn" id="shoppingClearBtn">clear all checks</button>` : ''}
+      ${mealSlots ? `<button class="shopping-clear-btn" id="shoppingUntickBtn">untick all meals</button>` : ''}
+    </div>
   `;
 
   const weekChips = document.getElementById('shoppingWeekChips');
-  WEEK_KEYS.forEach(wk=>{
+  WEEK_KEYS.forEach(w=>{
+    const n = pickedSlots(w).length;
     const chip = document.createElement('div');
-    chip.className = 'bank-chip' + (shoppingWeeks.includes(wk) ? ' active':'');
-    chip.textContent = `Week ${wk}${wk===thisWeek ? ' ·now' : ''}`;
-    chip.onclick = ()=>{
-      shoppingWeeks = shoppingWeeks.includes(wk)
-        ? shoppingWeeks.filter(w=> w !== wk)
-        : WEEK_KEYS.filter(w=> w===wk || shoppingWeeks.includes(w));
-      saveShoppingWeeks();
-      setTimeout(renderShoppingView, 0);
-    };
+    chip.className = 'bank-chip' + (w===wk ? ' active':'');
+    chip.textContent = `Week ${w}${w===thisWeek ? ' ·now' : ''}${n ? ` (${n})` : ''}`;
+    chip.onclick = ()=>{ shoppingViewWeek = w; setTimeout(renderShoppingView, 0); };
     weekChips.appendChild(chip);
   });
 
-  const setSkip = (wk, arr)=>{
-    if(arr.length) shoppingSkip[wk] = arr; else delete shoppingSkip[wk];
-    saveShoppingSkip();
+  const setPick = (arr)=>{
+    if(arr.length) shoppingPick[wk] = arr; else delete shoppingPick[wk];
+    saveShoppingPick();
     setTimeout(renderShoppingView, 0);
   };
   const mealsWrap = document.getElementById('shoppingMeals');
-  shoppingWeeks.forEach(wk=>{
-    const slots = plannedSlots(wk);
-    const skip = new Set(shoppingSkip[wk] || []);
-    const head = document.createElement('div');
-    head.className = 'shopping-week-head';
-    head.innerHTML = `<span class="shopping-week-name">Week ${wk}</span>`;
-    const quick = [];
-    if(slots.length){
-      quick.push(["All", ()=> setSkip(wk, [])]);
-      quick.push(["None", ()=> setSkip(wk, slots.map(sl=> sl.id))]);
-      if(wk===thisWeek) quick.push(["Today on", ()=> setSkip(wk, slots.filter(sl=> sl.dayIdx < todayIdx).map(sl=> sl.id))]);
-    }
-    quick.forEach(([label, fn])=>{
-      const chip = document.createElement('div');
-      chip.className = 'bank-chip';
-      chip.textContent = label;
-      chip.onclick = fn;
-      head.appendChild(chip);
-    });
-    mealsWrap.appendChild(head);
-    if(!slots.length){
-      const empty = document.createElement('div');
-      empty.className = 'bank-empty';
-      empty.textContent = 'No meals planned for this week yet.';
-      mealsWrap.appendChild(empty);
-    }
-    slots.forEach(sl=>{
-      const on = !skip.has(sl.id);
-      const mrow = document.createElement('label');
-      mrow.className = 'shopping-item shopping-meal' + (on ? ' on' : '');
-      mrow.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span class="shopping-meal-when">${sl.dayShort} ${sl.meal}${sl.who==='adults' ? ' · A' : ''}</span><span class="shopping-item-label">${escapeHtml(sl.name)}</span>`;
-      mrow.querySelector('input').onchange = (e)=>{
-        const next = new Set(shoppingSkip[wk] || []);
-        if(e.target.checked) next.delete(sl.id); else next.add(sl.id);
-        setSkip(wk, [...next]);
-      };
-      mealsWrap.appendChild(mrow);
-    });
+  const head = document.createElement('div');
+  head.className = 'shopping-week-head';
+  head.innerHTML = `<span class="shopping-week-name">Week ${wk}</span>`;
+  const quick = [];
+  if(slots.length){
+    quick.push(["All", ()=> setPick(slots.map(sl=> sl.id))]);
+    quick.push(["None", ()=> setPick([])]);
+    if(wk===thisWeek) quick.push(["Today on", ()=> setPick(slots.filter(sl=> sl.dayIdx >= todayIdx).map(sl=> sl.id))]);
+  }
+  quick.forEach(([label, fn])=>{
+    const chip = document.createElement('div');
+    chip.className = 'bank-chip';
+    chip.textContent = label;
+    chip.onclick = fn;
+    head.appendChild(chip);
   });
+  mealsWrap.appendChild(head);
+  if(!slots.length){
+    const empty = document.createElement('div');
+    empty.className = 'bank-empty';
+    empty.textContent = 'No meals planned for this week yet.';
+    mealsWrap.appendChild(empty);
+  }
+  slots.forEach(sl=>{
+    const on = pick.has(sl.id);
+    const mrow = document.createElement('label');
+    mrow.className = 'shopping-item shopping-meal' + (on ? ' on' : '');
+    mrow.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span class="shopping-meal-when">${sl.dayShort} ${sl.meal}${sl.who==='adults' ? ' · A' : ''}</span><span class="shopping-item-label">${escapeHtml(sl.name)}</span>`;
+    mrow.querySelector('input').onchange = (e)=>{
+      const next = new Set(shoppingPick[wk] || []);
+      if(e.target.checked) next.add(sl.id); else next.delete(sl.id);
+      setPick([...next]);
+    };
+    mealsWrap.appendChild(mrow);
+  });
+
+  const untickBtn = document.getElementById('shoppingUntickBtn');
+  if(untickBtn){
+    untickBtn.onclick = ()=>{
+      if(!confirm('Untick every meal in every week?')) return;
+      shoppingPick = {};
+      saveShoppingPick();
+      setTimeout(renderShoppingView, 0);
+    };
+  }
 
   const itemsWrap = document.getElementById('shoppingItems');
   if(items.length===0){
-    itemsWrap.innerHTML = !shoppingWeeks.length
-      ? `<div class="bank-empty">Pick one or more weeks above.</div>`
-      : plannedTotal && mealSlots===0
-        ? `<div class="bank-empty">No meals ticked — tick the meals you're shopping for above.</div>`
-        : `<div class="bank-empty">No ingredients to show — either no meals are planned, or the ticked meals don't have ingredients recorded yet.</div>`;
+    itemsWrap.innerHTML = mealSlots===0
+      ? `<div class="bank-empty">No meals ticked yet — tick meals above, switching weeks as you go.</div>`
+      : `<div class="bank-empty">The ticked meals don't have ingredients recorded yet.</div>`;
   } else {
     items.forEach(item=>{
       const key = item.toLowerCase();
